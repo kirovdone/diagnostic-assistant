@@ -42,6 +42,10 @@ def rank(
     equipment_family: str | None = None,
 ) -> Ranking:
     """Probabilities over root causes, plus the evidence to judge them by."""
+    # A cause that has left the taxonomy cannot be a candidate, so counting its vote in the
+    # denominator would quietly lose that mass instead of moving it to "something else".
+    neighbours = tuple(n for n in neighbours if get_cause(n.cause_id) is not None)
+
     votes: dict[str, float] = defaultdict(float)
     supporters: dict[str, list[Neighbour]] = defaultdict(list)
     for neighbour in neighbours:
@@ -63,8 +67,7 @@ def rank(
     scored: list[Candidate] = []
     for cause_id, vote in votes.items():
         cause = get_cause(cause_id)
-        if cause is None:
-            continue
+        assert cause is not None  # filtered above
         ranked_supporters = sorted(supporters[cause_id], key=lambda n: n.similarity, reverse=True)
         scored.append(
             Candidate(

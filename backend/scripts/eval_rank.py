@@ -18,11 +18,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-import botocore.exceptions
-
 from diagnostic_assist.corpus import sample_cases
+from diagnostic_assist.errors import UpstreamError
 from diagnostic_assist.extractor import default_extractor
 from diagnostic_assist.labeling import label_case
+from diagnostic_assist.models import Case
 from diagnostic_assist.ranking import rank
 from diagnostic_assist.retrieval import CaseIndex
 from diagnostic_assist.similarity import default_similarity
@@ -30,6 +30,40 @@ from diagnostic_assist.similarity import default_similarity
 
 def pct(a: int, b: int) -> str:
     return f"{a / b * 100:5.1f}%" if b else "    --"
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> str:
+    """95% Wilson interval, which is what a proportion on n=19 actually deserves."""
+    if not n:
+        return "--"
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / (1 + z * z / n)
+    return f"{(centre - half) * 100:.0f}-{(centre + half) * 100:.0f}%"
+
+
+def _single_commonest(table: Counter[str]) -> str | None:
+    """The one commonest cause, or None when the table is empty or its top is tied."""
+    ranked = table.most_common(2)
+    if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):
+        return None
+    return ranked[0][0]
+
+
+def lookup_table_hit(
+    held: Case, truth: str, by_type: dict[str, Counter[str]], by_family: dict[str, Counter[str]]
+) -> bool:
+    """What the lookup table says for one held-out case: the commonest cause for its type,
+    falling back to its family when the type has no other case -- the same fallback the
+    ranker gets. A tie is a miss: a table that has to flip a coin is not a table.
+    """
+    for table, key in ((by_type, held.equipment_type), (by_family, held.equipment_family)):
+        remaining = Counter(table.get(key, Counter()))
+        remaining[truth] -= 1
+        remaining = +remaining  # drops the zero left behind by the held-out case
+        if remaining:
+            return _single_commonest(remaining) == truth
+    return False
 
 
 def main() -> int:
@@ -42,8 +76,12 @@ def main() -> int:
         if labels[c.case_id].cause_id and labels[c.case_id].evidence_weight > 0
     ]
     by_type: dict[str, Counter[str]] = {}
+    by_family: dict[str, Counter[str]] = {}
     for c in votable:
-        by_type.setdefault(c.equipment_type, Counter())[labels[c.case_id].cause_id] += 1
+        cause = labels[c.case_id].cause_id
+        assert cause is not None
+        by_type.setdefault(c.equipment_type, Counter())[cause] += 1
+        by_family.setdefault(c.equipment_family, Counter())[cause] += 1
 
     top1 = top5 = top25 = base = 0
     # A cause with only one supporting case cannot be retrieved once that case is held out:
@@ -54,6 +92,7 @@ def main() -> int:
 
     for held in votable:
         truth = labels[held.case_id].cause_id
+        assert truth is not None  # votable, by construction above
         rest = [c for c in cases if c.case_id != held.case_id]
         index = CaseIndex(rest, labels, similarity=default_similarity())
         neighbours, level = index.search(
@@ -69,10 +108,7 @@ def main() -> int:
         top5 += hit5
         top25 += truth in [n.cause_id for n in neighbours]
 
-        common = by_type.get(held.equipment_type, Counter())
-        without = Counter(common)
-        without[truth] -= 1
-        base += bool(without) and without.most_common(1)[0][0] == truth
+        base += lookup_table_hit(held, truth, by_type, by_family)
 
         if counts[truth] > 1:
             reachable += 1
@@ -85,7 +121,8 @@ def main() -> int:
     print(f"  top-1                    {top1:2}/{n}   {pct(top1, n)}")
     print(f"  recall@5                 {top5:2}/{n}   {pct(top5, n)}")
     print(f"  recall@25 (retrieved)    {top25:2}/{n}   {pct(top25, n)}")
-    print(f"  baseline, commonest      {base:2}/{n}   {pct(base, n)}")
+    print(f"  baseline, lookup table   {base:2}/{n}   {pct(base, n)}"
+          "   (commonest cause per type, then family; tie = miss)")
     print(f"  margin over baseline          {(top1 - base) / n * 100:+.1f} pts\n")
     print(f"  where the answer is reachable at all "
           f"({reachable} cases whose cause has a second supporter)")
@@ -93,13 +130,13 @@ def main() -> int:
           f"{pct(reachable_top1, reachable)}")
     print(f"    recall@5               {reachable_top5:2}/{reachable}   "
           f"{pct(reachable_top5, reachable)}")
-    print(f"\n  n={n}: one standard error is about {(0.5 / n ** 0.5) * 100:.0f} points. "
-          f"Treat every figure above as an ordering, not an estimate.")
+    print(f"\n  n={n}. Wilson 95%: top-1 {wilson(top1, n)}, recall@5 {wilson(top5, n)}, "
+          f"baseline {wilson(base, n)}. Treat every figure above as an ordering, not an estimate.")
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except botocore.exceptions.BotoCoreError as exc:
+    except UpstreamError as exc:
         raise SystemExit(f"AWS is not usable: {exc}\nSee BEDROCK_SETUP.md.") from exc

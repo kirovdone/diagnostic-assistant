@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from diagnostic_assist import questions
 from diagnostic_assist.config import DEGRADED_EVIDENCE_MASS, MAX_CANDIDATES
 from diagnostic_assist.models import Case, CaseLabel, SymptomFeatures
 from diagnostic_assist.normalize import extract_features
@@ -225,6 +226,32 @@ class TestQuestions:
         """With nothing to discriminate between, a question cannot gain anything."""
         empty = rank((), "global")
         assert next_question(empty, (), extract_features("something odd"), []) is None
+
+    def test_the_chooser_picks_the_question_that_separates_the_leading_causes(
+        self, index: CaseIndex
+    ) -> None:
+        """Which question is chosen, not merely that one is. The chiller leak causes differ
+        on how fast the fluid comes out, and the dispatcher already said what the fluid is,
+        so severity is the question worth the turn."""
+        text = "Customer says there is oil under the machine"
+        result = index.search(text, "Water Chiller CH", None)
+        ranking = rank(
+            result.neighbours, result.fallback_level, equipment_family="Water Chiller CH"
+        )
+        question = next_question(ranking, result.neighbours, extract_features(text), [])
+        assert question is not None
+        assert question.question_id == "severity"
+        assert question.expected_information_gain > 0
+
+    def test_a_high_enough_floor_stops_every_question(
+        self, index: CaseIndex, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The floor is what stops the interview, so it has to be load-bearing."""
+        text = "Leak from the boom cylinder"
+        result = index.search(text, "Aerial Platform AP", "AP-120")
+        ranking = rank(result.neighbours, result.fallback_level)
+        monkeypatch.setattr(questions, "MIN_INFORMATION_GAIN_BITS", 10.0)
+        assert next_question(ranking, result.neighbours, extract_features(text), []) is None
 
     def test_every_answer_a_user_can_give_feeds_back_through_normalisation(
         self, index: CaseIndex

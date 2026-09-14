@@ -23,7 +23,7 @@ import { RankingAnswer } from "@/components/diagnose/RankingAnswer";
 import { ChatComposer } from "@/components/kit/chat/ChatComposer";
 import { Button } from "@/components/kit/ui/Button";
 import { Icon } from "@/components/kit/ui/Icon";
-import { getCase } from "@/helpers/api/diagnosticAssist";
+import { ApiError, getCase } from "@/helpers/api/diagnosticAssist";
 import { cn } from "@/helpers/common/cn";
 import { sendNotification } from "@/helpers/common/sendNotification";
 import useTranslation from "@/helpers/i18n/useTranslation";
@@ -71,7 +71,7 @@ const STARTERS: { label: string; prompt: string; icon: IconSvgElement }[] = [
 
 export default function DiagnosePage() {
   const { t, lang } = useTranslation("common");
-  const { session, pending, error, turns, start, answer, finish, reset } =
+  const { session, pending, error, turns, start, answer, detail, finish, reset } =
     useDiagnosisSession();
 
   // One field, one value, whichever turn it is.
@@ -89,17 +89,25 @@ export default function DiagnosePage() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, pending]);
 
-  const openEvidence = useCallback((caseId: string) => {
-    setOpenCase({ caseId, data: null });
-    getCase(caseId, lang)
-      .then((data) =>
-        // Guarded because the user can tap a second case id before the first resolves.
-        setOpenCase((current) =>
-          current?.caseId === caseId ? { caseId, data } : current,
-        ),
-      )
-      .catch(() => setOpenCase(null));
-  }, [lang]);
+  const openEvidence = useCallback(
+    (caseId: string) => {
+      setOpenCase({ caseId, data: null });
+      getCase(caseId, lang)
+        .then((data) =>
+          // Guarded because the user can tap a second case id before the first resolves.
+          setOpenCase((current) => (current?.caseId === caseId ? { caseId, data } : current)),
+        )
+        .catch((caught: unknown) => {
+          // The sheet used to open empty and vanish, which reads as a broken button rather
+          // than a failed request. The evidence case id is the one thing a technician is
+          // asked to check, so a failure to show it has to say so.
+          setOpenCase(null);
+          const detail = caught instanceof ApiError ? caught.message : "Could not load the case";
+          sendNotification("error", t(detail));
+        });
+    },
+    [lang, t],
+  );
 
   // One path out of the composer for every turn: open the session, answer the question on
   // the table, or add detail to the description and re-rank.
@@ -113,9 +121,11 @@ export default function DiagnosePage() {
     } else if (session.question) {
       answer(session.question.question_id, text);
     } else {
-      start({ description: `${session.description}. ${text}` });
+      // More description on the session already open. Restarting here would have thrown
+      // away the answers and refunded the three-question budget.
+      detail(text);
     }
-  }, [answer, draft, pending, session, start]);
+  }, [answer, detail, draft, pending, session, start]);
 
   // The hook owns the error; this raises it once, as a toast, the way the design system raises
   // every API failure. An effect rather than a call site because the error can arrive
@@ -150,9 +160,17 @@ export default function DiagnosePage() {
                 author={turn.author}
                 meta={turn.author === "system" ? turn.meta : undefined}
               >
-                <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-text">
-                  {translateTurn(t, turn.text)}
-                </p>
+                {/* A question is asked after the ranking, not before it: "here is what
+                    the corpus says, and this is what would narrow it". Anything else the
+                    assistant says leads, because it is about the answer below it. Keeping
+                    the prompt with its own buttons matters more than either: they used to
+                    sit at opposite ends of a five-row list, so by the time you reached
+                    "Yes, E207" the question was off the top of the screen. */}
+                {!turn.view?.question && (
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-text">
+                    {translateTurn(t, turn.text)}
+                  </p>
+                )}
 
                 {/* The answer, inside the answer. */}
                 {turn.view && (
@@ -162,19 +180,25 @@ export default function DiagnosePage() {
                   />
                 )}
 
-                {/* Only the live question is answerable. An older one's buttons scroll
-                    away with the turn that asked rather than staying clickable. */}
-                {turn.view?.question &&
-                  turn.id === lastTurn?.id &&
-                  !isClosed && (
-                    <QuestionOptions
-                      options={turn.view.question.options}
-                      disabled={pending}
-                      onSelect={(value) =>
-                        answer(turn.view!.question!.question_id, value)
-                      }
-                    />
-                  )}
+                {turn.view?.question && (
+                  <div className="flex flex-col gap-2 pt-0.5">
+                    <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-text">
+                      {translateTurn(t, turn.text)}
+                    </p>
+
+                    {/* Only the live question is answerable. An older one's buttons scroll
+                        away with the turn that asked rather than staying clickable. */}
+                    {turn.id === lastTurn?.id && !isClosed && (
+                      <QuestionOptions
+                        options={turn.view.question.options}
+                        disabled={pending}
+                        onSelect={(value) =>
+                          answer(turn.view!.question!.question_id, value)
+                        }
+                      />
+                    )}
+                  </div>
+                )}
               </ChatTurn>
             ))}
 

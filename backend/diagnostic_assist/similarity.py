@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import OrderedDict
 from collections.abc import Sequence
 from typing import Any, Protocol
 
@@ -11,11 +12,13 @@ from .config import (
     BEDROCK_EMBEDDING_BATCH,
     BEDROCK_EMBEDDING_DIMENSIONS,
     BEDROCK_EMBEDDING_MODEL_ID,
-    BEDROCK_MAX_ATTEMPTS,
     BEDROCK_REGION,
     MIN_NEIGHBOUR_SIMILARITY,
+    QUERY_EMBEDDING_CACHE_SIZE,
     aws_credentials_available,
 )
+from .errors import ModelUnavailableError, UpstreamError
+from .extractor import _bedrock_config
 
 
 class TextSimilarity(Protocol):
@@ -39,21 +42,11 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return max(0.0, dot / norm) if norm else 0.0
 
 
+# Documents are bounded by the corpus and are worth keeping for the life of the process.
+# Queries are not: every description anyone types would otherwise be held here, with its
+# 1024 floats, until the process restarts -- an unbounded cache keyed by user input.
 _CACHE: dict[tuple[str, str, str], tuple[float, ...]] = {}
-
-
-def _bedrock_config() -> Any:
-    """Retry policy for both Bedrock clients.
-
-    Adaptive rather than the default standard mode: it adds a client-side rate limiter that
-    slows down when the service starts throttling, instead of firing the same burst again
-    after a backoff. Labelling a corpus is exactly the shape that trips this -- a tight loop
-    of one call per case against a per-account quota -- and the design note's reserved
-    concurrency of 5 on the live Lambda is the same argument made in infrastructure.
-    """
-    from botocore.config import Config
-
-    return Config(retries={"max_attempts": BEDROCK_MAX_ATTEMPTS, "mode": "adaptive"})
+_QUERY_CACHE: OrderedDict[tuple[str, str, str], tuple[float, ...]] = OrderedDict()
 
 
 # STUB: vectors held in memory. Production stores them in the OpenSearch index.
@@ -81,34 +74,67 @@ class BedrockEmbedding:
         return self._client
 
     def _key(self, text: str, input_type: str) -> tuple[str, str, str]:
-        """Cache key. `input_type` is part of it because the same text embedded as a"""
+        """Cache key.
+
+        `input_type` is part of it because the same text embedded as a search_query and as a
+        search_document gives different vectors: Cohere encodes the two asymmetrically, and
+        mixing them up would silently degrade every comparison.
+        """
         return (self._model_id, input_type, text)
+
+    def _cached(self, key: tuple[str, str, str]) -> tuple[float, ...] | None:
+        """A vector from either cache, refreshing its place in the bounded one."""
+        if key in _CACHE:
+            return _CACHE[key]
+        if key in _QUERY_CACHE:
+            _QUERY_CACHE.move_to_end(key)
+            return _QUERY_CACHE[key]
+        return None
+
+    def _store(self, key: tuple[str, str, str], vector: tuple[float, ...]) -> None:
+        """Keep a document for good; keep a query only until the cap pushes it out."""
+        if key[1] == "search_document":
+            _CACHE[key] = vector
+            return
+        _QUERY_CACHE[key] = vector
+        _QUERY_CACHE.move_to_end(key)
+        while len(_QUERY_CACHE) > QUERY_EMBEDDING_CACHE_SIZE:
+            _QUERY_CACHE.popitem(last=False)
 
     def _embed(self, texts: Sequence[str], input_type: str) -> list[tuple[float, ...]]:
         """Embed, reusing anything already seen, in batches the endpoint accepts."""
-        missing = [t for t in dict.fromkeys(texts) if self._key(t, input_type) not in _CACHE]
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        missing = [
+            t for t in dict.fromkeys(texts) if self._cached(self._key(t, input_type)) is None
+        ]
         for i in range(0, len(missing), BEDROCK_EMBEDDING_BATCH):
             batch = missing[i : i + BEDROCK_EMBEDDING_BATCH]
-            response = self._bedrock().invoke_model(
-                modelId=self._model_id,
-                accept="application/json",
-                contentType="application/json",
-                body=json.dumps(
-                    {
-                        "texts": batch,
-                        "input_type": input_type,
-                        "truncate": "END",
-                        "output_dimension": BEDROCK_EMBEDDING_DIMENSIONS,
-                        "embedding_types": ["float"],
-                    }
-                ),
-            )
+            try:
+                response = self._bedrock().invoke_model(
+                    modelId=self._model_id,
+                    accept="application/json",
+                    contentType="application/json",
+                    body=json.dumps(
+                        {
+                            "texts": batch,
+                            "input_type": input_type,
+                            "truncate": "END",
+                            "output_dimension": BEDROCK_EMBEDDING_DIMENSIONS,
+                            "embedding_types": ["float"],
+                        }
+                    ),
+                )
+            except (BotoCoreError, ClientError) as exc:
+                raise UpstreamError(type(exc).__name__) from exc
             payload = json.loads(response["body"].read())
             block = payload["embeddings"]
             vectors = block["float"] if isinstance(block, dict) else block
             for text, vector in zip(batch, vectors, strict=True):
-                _CACHE[self._key(text, input_type)] = tuple(vector)
-        return [_CACHE[self._key(t, input_type)] for t in texts]
+                self._store(self._key(text, input_type), tuple(vector))
+        cached = [self._cached(self._key(t, input_type)) for t in texts]
+        assert all(v is not None for v in cached)
+        return [v for v in cached if v is not None]
 
     def fit(self, texts: Sequence[str]) -> None:
         """Embed the corpus once, as documents."""
@@ -125,7 +151,7 @@ class BedrockEmbedding:
 def default_similarity() -> TextSimilarity:
     """The embedding backend, or an error saying what to configure."""
     if not aws_credentials_available():
-        raise RuntimeError(
+        raise ModelUnavailableError(
             "No text similarity is available: no AWS credentials found. Configure them "
             "(`aws configure`, or AWS_PROFILE / AWS_ACCESS_KEY_ID in the environment), "
             "install the extra with `uv sync --extra bedrock`, and grant the account access "

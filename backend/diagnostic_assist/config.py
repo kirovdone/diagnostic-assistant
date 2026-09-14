@@ -64,7 +64,7 @@ CONFIDENCE_CEILING_UNMAPPED: Final[float] = 0.2
 # written by the technician, so they are more reliable than the extractor.
 CONFIDENCE_DETERMINISTIC: Final[float] = 0.9
 
-# Rows at or below this confidence are surfaced in the review queue on /labels.
+# Rows at or below this confidence are flagged needs_review and surfaced on /cases.
 REVIEW_CONFIDENCE_THRESHOLD: Final[float] = 0.5
 
 # --------------------------------------------------------------------------------------
@@ -100,13 +100,23 @@ BEDROCK_EMBEDDING_MODEL_ID: Final[str] = os.environ.get(
 # Embed v4 emits 256 to 1536 dimensions.
 BEDROCK_EMBEDDING_DIMENSIONS: Final[int] = 1024
 
-# Texts accepted per embed call.
 # How many times a throttled Bedrock call is retried before it fails. Labelling a corpus is
 # one call per case in a loop against a per-account quota, so the first run on a cold quota
 # is throttled rather than refused, and giving up on the first 429 turns a pause into an
 # outage.
 BEDROCK_MAX_ATTEMPTS: Final[int] = 8
 
+# Timeouts on both Bedrock clients. botocore defaults to 60 s on each, which is twenty times
+# the budget the first candidates are supposed to appear in: a network black hole would hold
+# the request open long past the point the user has given up.
+# Query embeddings kept in memory. Documents are cached for the life of the process because
+# the corpus bounds them; queries are whatever anyone types, so they need a ceiling.
+QUERY_EMBEDDING_CACHE_SIZE: Final[int] = 256
+
+BEDROCK_CONNECT_TIMEOUT_SECONDS: Final[int] = 5
+BEDROCK_READ_TIMEOUT_SECONDS: Final[int] = 30
+
+# Texts accepted per embed call. Cohere's limit is 96, and the corpus is embedded in one pass.
 BEDROCK_EMBEDDING_BATCH: Final[int] = 96
 
 
@@ -130,8 +140,9 @@ def aws_credentials_available() -> bool:
 # Retrieval
 # --------------------------------------------------------------------------------------
 
-# supporting cases still reaches the ranker, and narrow enough that the tail of weakly similar
-# cases does not dominate the vote once weighted.
+# Neighbours kept per search. Wide enough that a cause with only a handful of supporting cases
+# still reaches the ranker, and narrow enough that the tail of weakly similar cases does not
+# dominate the vote once weighted.
 TOP_K_NEIGHBOURS: Final[int] = 25
 
 # A low guard, not a precision knob, and it is deliberately low after measuring the alternative.
@@ -177,12 +188,19 @@ MIN_CANDIDATE_PROBABILITY: Final[float] = 0.03
 MAX_CANDIDATES: Final[int] = 5
 
 # Total weighted evidence below which the answer is marked degraded and the UI says so. An
-# absolute count, so it stops firing at scale and must become relative to the type.
+# absolute threshold, so it stops firing at scale and must become relative to the type.
 DEGRADED_EVIDENCE_MASS: Final[float] = 2.0
 
 # --------------------------------------------------------------------------------------
 # Questions
 # --------------------------------------------------------------------------------------
+
+# What the API accepts. The composer caps input in the browser, which stops an accident and
+# nothing else: a signed-in caller posting straight at the API is bounded only here. Four times
+# the composer cap leaves room for a dispatcher pasting a mail thread, and is still small enough
+# that the embed call it pays for is one call.
+MAX_DESCRIPTION_CHARS: Final[int] = 4000
+MAX_ANSWER_CHARS: Final[int] = 500
 
 # Questions asked before we stop and show the answer. Three is what someone on a phone call
 # will sit through; the machine question is scope, not symptom, and does not count.
@@ -211,6 +229,12 @@ AUTH_SECRET: Final[str] = os.environ.get(
 # a week.
 AUTH_TOKEN_TTL_SECONDS: Final[int] = 12 * 60 * 60
 
+# How long a stream ticket is good for. EventSource cannot set a header, so the SSE credential
+# rides in the query string and is written to every access log; a minute is long enough to open
+# the stream the POST just told the client about, and short enough that the log line is worthless
+# by the time anyone reads it.
+STREAM_TICKET_TTL_SECONDS: Final[int] = 60
+
 # The shortest password the change-password endpoint will accept. Four, which is not a password
 # policy and is not pretending to be one.
 MIN_PASSWORD_LENGTH: Final[int] = 4
@@ -236,7 +260,8 @@ CORS_ALLOW_ORIGINS: Final[tuple[str, ...]] = tuple(
     ).split(",")
 )
 
-# How long a session survives without being touched. Eight hours matches a shift and the TTL the
+# How long a session survives after it was created -- nothing records a last touch, so a long
+# session is dropped mid-use rather than extended. Eight hours matches a shift and the TTL the
 # design note puts on the DynamoDB `sessions` table, so the in-memory store expires on the same
 # clock the production one will.
 SESSION_TTL_SECONDS: Final[int] = 8 * 60 * 60

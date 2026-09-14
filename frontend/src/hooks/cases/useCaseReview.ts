@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FLAG_LABEL } from "@/components/cases/LabelFlags";
 import { paramsToState } from "@/helpers/common/paramsToState";
 import { sendNotification } from "@/helpers/common/sendNotification";
-import { ApiError, listCases } from "@/helpers/api/diagnosticAssist";
+import { API_URL, ApiError, listCases } from "@/helpers/api/diagnosticAssist";
 import useTranslation from "@/helpers/i18n/useTranslation";
 import type { Filters } from "@/types/api";
 import type { LabelRow } from "@/types/diagnostics";
@@ -50,7 +50,7 @@ export interface CaseReview {
 }
 
 export function useCaseReview(): CaseReview {
-  const { t } = useTranslation("common");
+  const { t, lang } = useTranslation("common");
   const searchParams = useSearchParams();
   const [rows, setRows] = useState<LabelRow[] | null>(null);
 
@@ -78,21 +78,23 @@ export function useCaseReview(): CaseReview {
   // request against a list that is already in memory, and the alternative is a stale
   // closure that toasts in the previous language.
   useEffect(() => {
-    listCases()
+    listCases(lang)
       .then(setRows)
       .catch((caught: unknown) => {
         // 503 is the models being unreachable, which is a different problem from the
         // server being down, and telling someone to check port 8000 when the server
-        // answered is how an afternoon gets lost.
+        // answered is how an afternoon gets lost. A 401 is neither: the API client has
+        // already signed this browser out, so blaming the backend would be wrong twice.
         const status = caught instanceof ApiError ? caught.status : undefined;
+        if (status === 401) return;
         sendNotification(
           "error",
           status === 503
             ? t("The case list is unavailable: the service cannot reach its models.")
-            : t("Could not reach the backend. Is it running on port 8000?"),
+            : t("Could not reach the backend at {{url}}.", { url: API_URL }),
         );
       });
-  }, [t]);
+  }, [t, lang]);
 
   // Two passes rather than one: the query decides which cases are in scope at all, and the
   // date range decides which window of those is on screen. Keeping them apart means a

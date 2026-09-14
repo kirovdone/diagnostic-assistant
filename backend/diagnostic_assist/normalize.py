@@ -31,8 +31,10 @@ ABBREVIATIONS: Final[tuple[Abbreviation, ...]] = (
     Abbreviation(r"temp", "temporary", right_context=r"fix|repair|solution|patch"),
 )
 
+# A topic word may introduce a spaced code ("Fehler E 207"). A bare "E 207" may not: Italian
+# "e 45" is a conjunction and a number, and test_regressions pins it.
 _PREFIXED_CODE = re.compile(
-    r"\b(?:(?:err|error|errors|fehler|erreur|errore)\s?-?\s?|e-?)(\d{2,4})\b",
+    r"\b(?:(?:err|error|errors|fehler|erreur|errore)\s?-?\s?(?:e\s?-?\s?)?|e-?)(\d{2,4})\b",
     re.IGNORECASE,
 )
 
@@ -44,12 +46,20 @@ _CODE_TOPIC = re.compile(
 )
 
 _NEGATION_CUE = re.compile(
-    r"\b(no|not|none|never|without|kein|keine|keinen|nicht|ohne|"
-    r"aucun|aucune|pas|sans|nessun|nessuna|non|senza)\b",
+    r"\b(?:no|not|none|never|without|kein|keine|keinen|nicht|ohne|"
+    r"aucun|aucune|pas|sans|nessun|nessuna|non(?!-)|senza)\b|n['\u2019]t\b",
     re.IGNORECASE,
 )
 
 _SENTENCE_END = re.compile(r"[.;!?,]")
+
+# German puts the negating particle at the end of its clause, so "laeuft nicht und Oel tropft"
+# would otherwise negate the next clause and lose its fluid. Italian coordinating `e` is
+# deliberately absent: it is also the folded `e` of `e-207` and of accented `e`, and dropping
+# it here would end the scope early (test_normalize.py, test_regressions.py pin both).
+_SCOPE_END = re.compile(
+    r"[.;!?,]|\b(?:and|but|or|und|aber|oder|et|mais|ou|ed|ma|o|oppure)\b"
+)
 
 FLUID_CUES: Final[dict[FluidClaim, tuple[str, ...]]] = {
     "oil": ("oil*", "oel", "ol", "huile*", "olio", "hydraulic*", "hydraulique*", "idraulic*"),
@@ -95,6 +105,18 @@ SEVERITY_CUES: Final[dict[SeverityHint, tuple[str, ...]]] = {
     ),
 }
 
+# A drop is a unit of liquid or a fall in a reading, and only the first is a severity.
+SEVERITY_EXCLUSIONS: Final[dict[SeverityHint, tuple[str, ...]]] = {
+    "drip": (
+        "pressure drop",
+        "pressure drops",
+        "voltage drop",
+        "drops out",
+        "drop out",
+        "dropped out",
+    ),
+}
+
 RECURRENCE_DENIAL_CUES: Final[tuple[str, ...]] = (
     "first occurrence",
     "first time",
@@ -129,7 +151,14 @@ RECURRENCE_CUES: Final[tuple[str, ...]] = (
 )
 
 ONSET_EXCLUSIONS: Final[dict[str, tuple[str, ...]]] = {
-    "cold": ("cold water", "cold side", "cold circuit", "kaltwasser", "eau froide"),
+    "cold": (
+        "cold water",
+        "cold side",
+        "cold circuit",
+        "kaltwasser",
+        "eau froide",
+        "groupe froid",  # the French name for the chiller itself, not a cold start
+    ),
 }
 
 ONSET_CUES: Final[dict[str, tuple[str, ...]]] = {
@@ -209,8 +238,8 @@ def negated_ranges(text: str) -> tuple[tuple[int, int], ...]:
     for cue in _NEGATION_CUE.finditer(lowered):
         start = cue.end()
         rest = lowered[start:]
-        sentence_end = _SENTENCE_END.search(rest)
-        limit = start + (sentence_end.start() if sentence_end else len(rest))
+        scope_end = _SCOPE_END.search(rest)
+        limit = start + (scope_end.start() if scope_end else len(rest))
         tokens = list(re.finditer(r"\S+", lowered[start:limit]))[:NEGATION_SCOPE_TOKENS]
         if tokens:
             ranges.append((start, start + tokens[-1].end()))
@@ -228,8 +257,15 @@ def _is_negated(position: int, ranges: tuple[tuple[int, int], ...]) -> bool:
     return any(start <= position < end for start, end in ranges)
 
 
-def extract_error_codes(text: str) -> tuple[tuple[str, ...], bool]:
-    """Return (codes present, codes explicitly absent)."""
+def extract_error_codes(
+    text: str, ignore: frozenset[str] = frozenset()
+) -> tuple[tuple[str, ...], bool]:
+    """Return (codes present, codes explicitly absent).
+
+    `ignore` holds the equipment type codes of the corpus. They have the shape of a lettered
+    fault code, so naming the machine ("CX-450 will not start") would otherwise record a fault
+    code the machine never showed, penalising every neighbour that does not share it.
+    """
     ranges = negated_ranges(text)
     absent = any(_CODE_TOPIC.search(clause) for clause in negated_clauses(text))
 
@@ -250,6 +286,8 @@ def extract_error_codes(text: str) -> tuple[tuple[str, ...], bool]:
             absent = True
             continue
         code = f"{match.group(1)}-{match.group(2)}"
+        if code in ignore:
+            continue
         if code not in codes:
             codes.append(code)
     return tuple(codes), absent
@@ -297,6 +335,8 @@ def extract_severity(normalized: str, negated: tuple[tuple[int, int], ...] = ())
     """How fast the fault presents: a drip, or continuous."""
     if any(_has_cue(normalized, cue, negated) for cue in SEVERITY_CUES["continuous"]):
         return "continuous"
+    if any(_has_cue(normalized, cue, negated) for cue in SEVERITY_EXCLUSIONS["drip"]):
+        return "unknown"
     if any(_has_cue(normalized, cue, negated) for cue in SEVERITY_CUES["drip"]):
         return "drip"
     return "unknown"
@@ -321,11 +361,11 @@ def extract_onset_conditions(
     return tuple(onsets)
 
 
-def extract_features(text: str) -> SymptomFeatures:
+def extract_features(text: str, ignore_codes: frozenset[str] = frozenset()) -> SymptomFeatures:
     """The full structured view of one piece of free text."""
     normalized = normalize_text(text)
     negated = negated_ranges(normalized)
-    codes, codes_absent = extract_error_codes(text)
+    codes, codes_absent = extract_error_codes(text, ignore_codes)
     return SymptomFeatures(
         error_codes=codes,
         error_codes_absent=codes_absent,
@@ -337,6 +377,6 @@ def extract_features(text: str) -> SymptomFeatures:
     )
 
 
-def features_for_case(case: Case) -> SymptomFeatures:
+def features_for_case(case: Case, ignore_codes: frozenset[str] = frozenset()) -> SymptomFeatures:
     """Features from the customer's side of a historical case."""
-    return extract_features(case.customer_description)
+    return extract_features(case.customer_description, ignore_codes)

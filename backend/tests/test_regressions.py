@@ -198,7 +198,8 @@ class TestPreChecksDoNotOverreach:
         assert label.cause_id is None
 
     def test_the_german_whole_unit_swap_is_caught_in_either_spelling(self) -> None:
-        """`normalize_text` folds the umlaut, so the ae-only pattern matched the sloppy"""
+        """`normalize_text` folds the umlaut, so the ae-only pattern matched the sloppy
+        spelling and missed the correct one -- the opposite of what was intended."""
         for spelling in ("Komplettgerät getauscht", "Komplettgeraet getauscht"):
             case = _case(
                 technician_notes=f"Geraet innerhalb der Garantie. {spelling}, nicht zerlegt.",
@@ -392,7 +393,8 @@ class TestAnswerCorrection:
         assert client.post(url, json={"confirmed_cause_id": None}).status_code == 200
 
     def test_the_close_response_carries_the_sequence_number_the_stream_reached(self) -> None:
-        """`_publish` stamps seq after emitting and says why; close did not, so the body"""
+        """`_publish` stamps seq after emitting and says why; close did not, so the body
+        carried a sequence number older than the `done` event the client had already seen."""
         client = _signed_in()
         created = client.post(
             "/sessions",
@@ -408,7 +410,8 @@ class TestAnswerCorrection:
         assert closed["seq"] == _sessions[created["session_id"]].seq
 
     def test_reading_a_session_in_another_language_does_not_change_the_session(self) -> None:
-        """A GET that persisted its language made a read mutate shared state, so two tabs on"""
+        """A GET that persisted its language made a read mutate shared state, so two tabs on
+        one session in different locales fought over it."""
         client = _signed_in()
         created = client.post(
             "/sessions",
@@ -427,10 +430,11 @@ class TestAnswerCorrection:
         assert client.get(f"/sessions/{sid}").json()["language"] == "en"
 
     def test_sessions_past_their_ttl_are_dropped(self) -> None:
-        """Two module dicts with no eviction: a session whose browser never opened the stream"""
+        """Session state has no eviction of its own: a session whose browser never opened
+        the stream would otherwise be held, with its event log, until the process died."""
         from datetime import UTC, datetime, timedelta
 
-        from diagnostic_assist.api import _queues
+        from diagnostic_assist.api import _events
         from diagnostic_assist.config import SESSION_TTL_SECONDS
 
         client = _signed_in()
@@ -456,7 +460,7 @@ class TestAnswerCorrection:
         ).json()["session_id"]
 
         assert stale not in _sessions
-        assert stale not in _queues
+        assert stale not in _events
         assert fresh in _sessions
         assert client.get(f"/sessions/{stale}").status_code == 404
 
@@ -465,12 +469,12 @@ class TestUpstreamFailures:
     """An unreachable Bedrock is a 503 with a reason, not a 500 with a traceback."""
 
     def test_a_bedrock_failure_is_a_503_not_a_500(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from botocore.exceptions import ClientError
-
+        """Wrapped at the call site, so this holds without botocore installed."""
         from diagnostic_assist import api
+        from diagnostic_assist.errors import UpstreamError
 
         def explode(*_: object, **__: object) -> None:
-            raise ClientError({"Error": {"Code": "AccessDenied"}}, "Converse")
+            raise UpstreamError("ClientError")
 
         monkeypatch.setattr(api, "_corpus", None)
         monkeypatch.setattr(api, "_Corpus", explode)

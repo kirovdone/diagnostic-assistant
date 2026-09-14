@@ -45,7 +45,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["diagnostic_assist"]
+files = ["diagnostic_assist", "scripts"]
 strict = true
 warn_unreachable = true
 

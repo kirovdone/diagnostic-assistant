@@ -1,6 +1,11 @@
 "use client";
 
-// Origin: the in-house design system, src/hooks/common/useSidebarResize.ts. Copied unchanged.
+// Origin: the in-house design system, src/hooks/common/useSidebarResize.ts.
+//
+// Changed here: every localStorage access is wrapped. The design system runs behind a login
+// on managed browsers; this is a static export anyone can open, and a browser with site data
+// blocked throws on the first read. That read is in a layout effect of the app shell, so the
+// exception took the whole signed-in UI down to keep a remembered sidebar width.
 
 import {
   useCallback,
@@ -22,6 +27,16 @@ const clampChatWidth = (value: number): number =>
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+// Storage is a convenience here, never a dependency: a blocked or full store loses the
+// preference and changes nothing else.
+const remember = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Nothing to do.
+  }
+};
+
 export const setSidebarCollapsed = (collapsed: boolean) => {
   window.dispatchEvent(
     new CustomEvent("sidebarCollapse", { detail: { collapsed } }),
@@ -37,11 +52,14 @@ export const useSidebarResize = (isChatMode: boolean) => {
   const width = isChatMode ? chatWidth : MENU_WIDTH;
 
   useIsomorphicLayoutEffect(() => {
-    const savedCollapsed = localStorage.getItem("sidebarCollapsed");
-    if (savedCollapsed !== null) setIsCollapsed(JSON.parse(savedCollapsed));
-    const savedWidth = Number(localStorage.getItem(CHAT_WIDTH_KEY));
-    if (Number.isFinite(savedWidth) && savedWidth > 0)
-      setChatWidth(clampChatWidth(savedWidth));
+    try {
+      const savedCollapsed = localStorage.getItem("sidebarCollapsed");
+      if (savedCollapsed !== null) setIsCollapsed(JSON.parse(savedCollapsed));
+      const savedWidth = Number(localStorage.getItem(CHAT_WIDTH_KEY));
+      if (Number.isFinite(savedWidth) && savedWidth > 0) setChatWidth(clampChatWidth(savedWidth));
+    } catch {
+      // Defaults are fine; the preference simply is not remembered.
+    }
     const raf = requestAnimationFrame(() => setHasMounted(true));
     return () => cancelAnimationFrame(raf);
   }, []);
@@ -56,7 +74,7 @@ export const useSidebarResize = (isChatMode: boolean) => {
   const toggle = useCallback(() => {
     setIsCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem("sidebarCollapsed", JSON.stringify(next));
+      remember("sidebarCollapsed", JSON.stringify(next));
       return next;
     });
   }, []);
@@ -77,7 +95,7 @@ export const useSidebarResize = (isChatMode: boolean) => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         setChatWidth((current) => {
-          localStorage.setItem(CHAT_WIDTH_KEY, String(current));
+          remember(CHAT_WIDTH_KEY, String(current));
           return current;
         });
       };

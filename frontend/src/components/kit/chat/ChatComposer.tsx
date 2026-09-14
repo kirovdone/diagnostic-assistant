@@ -2,11 +2,13 @@
 
 // Origin: the in-house design system, src/chat/ui/ChatComposer.tsx. Copied to keep this app native to the design system.
 //
-// Changes from the original, both recorded in COMPONENTS.md:
+// Changes from the original:
 //
 //   - import paths rewritten for this app.
 //   - `rows` is a prop and defaults to 1, not 3. the design system opens at three because its
 //     composer is the page; here it opens at one and grows with what is typed.
+//   - aria-label on the input. The design system's composer sits under a visible heading
+//     that names it; this one is the whole screen, and a placeholder is not a name.
 //   - resize-none. The original leaves the browser grabber on, which is visible at one
 //     row and pointless when the field sizes itself.
 //   - py-3 rather than py-2.5, so one row of text plus its padding is exactly the height
@@ -77,6 +79,10 @@ export const ChatComposer = ({
         id="prompt"
         autoFocus={autoFocus}
         placeholder={placeholder}
+        // The product's only input. A placeholder is not an accessible name -- it is
+        // announced as a hint and disappears as soon as anyone types -- so screen-reader
+        // users had no name for the field at all.
+        aria-label={placeholder}
         onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
           onChange(e.target.value)
         }

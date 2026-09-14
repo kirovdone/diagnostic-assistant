@@ -78,6 +78,8 @@ export interface SessionView {
   ranking: Ranking;
   question: Question | null;
   confirmed_cause_id: string | null;
+  // Minted on every view, and only good for this session for the next minute.
+  stream_ticket?: string | null;
 }
 
 export interface CaseLabel {

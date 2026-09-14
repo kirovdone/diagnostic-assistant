@@ -39,9 +39,22 @@ export function RankingAnswer({ view, onEvidenceClick }: RankingAnswerProps) {
   const machine = narrateMachine(t, view);
   const evidence = narrateEvidence(t, view);
 
+  const hasCandidates = view.ranking.candidates.length > 0;
+
   return (
     <div className="flex max-w-sm flex-col gap-2.5">
-      {(machine || evidence) && (
+      {/* The list needs saying what it is. Without this the turn opens on the scope line,
+          which reads as metadata rather than as an answer, and nothing tells a reader the
+          rows are ranked root causes rather than, say, the parts to load. */}
+      {hasCandidates && (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-semibold text-text">{t("Most likely causes")}</p>
+          {(machine || evidence) && (
+            <p className="text-textLight">{[machine, evidence].filter(Boolean).join(" ")}</p>
+          )}
+        </div>
+      )}
+      {!hasCandidates && (machine || evidence) && (
         <p className="text-textLight">{[machine, evidence].filter(Boolean).join(" ")}</p>
       )}
       <CandidateList

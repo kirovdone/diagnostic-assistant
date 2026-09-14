@@ -1,0 +1,16 @@
+# uv run python scripts/compare_models.py eu.amazon.nova-lite-v1:0 eu.amazon.nova-2-lite-v1:0 eu.amazon.nova-micro-v1:0 eu.amazon.nova-pro-v1:0
+# 2026-09-14, eu-central-1. Cost is from Bedrock's own usage counters, not an estimate.
+# Nova 2 Lite scored 14/19 on an earlier run: it is the least stable of the four.
+22 cases · languages de=2, en=18, fr=1, it=1
+
+model                                            cause   excl  non-en   secs      cost
+--------------------------------------------------------------------------------------
+eu.amazon.nova-lite-v1:0                      19/19    3/3    4/4        11.7   $0.0022
+eu.amazon.nova-2-lite-v1:0                    15/19    3/3    4/4        14.4   $0.0189
+eu.amazon.nova-micro-v1:0                     18/19    3/3    4/4        10.1   $0.0013
+eu.amazon.nova-pro-v1:0                       19/19    3/3    4/4        16.3   $0.0265
+--------------------------------------------------------------------------------------
+
+cause  = right root cause, of the cases that have one
+excl   = correctly refused a cause, of the cases that have none
+non-en = the same as cause, restricted to DE/FR/IT — the column that decides this

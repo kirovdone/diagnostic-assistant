@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 
 import pytest
@@ -194,6 +195,9 @@ class TestClosing:
         assert response.status_code == 409
 
 
+_MILESTONES = ("candidates.initial", "done", "question")
+
+
 class TestStream:
     def test_the_stream_replays_events_queued_before_the_client_connected(
         self, client: TestClient
@@ -202,21 +206,23 @@ class TestStream:
         created = _start(client, "Machine will not start, no lights", "Air Compressor CX", "CX-450")
         events: list[tuple[str, dict]] = []
         with client.stream(
-            "GET", f"/sessions/{created['session_id']}/events?token={_token(client)}"
+            "GET",
+            f"/sessions/{created['session_id']}/events?ticket={created['stream_ticket']}",
         ) as response:
             assert response.status_code == 200
             name = ""
-            for line in response.iter_lines():
+            # Capped: a stream that never says done must fail the test, not hang it.
+            for line in itertools.islice(response.iter_lines(), 200):
                 if line.startswith("event:"):
                     name = line.split(":", 1)[1].strip()
                 elif line.startswith("data:"):
                     events.append((name, json.loads(line.split(":", 1)[1].strip())))
-                    if name == "done":
+                    if name in ("done", "question"):
                         break
 
         names = [name for name, _ in events]
         assert names[0] == "candidates.initial"
-        assert names[-1] == "done"
+        assert names[-1] in ("done", "question")
         assert all(payload["taxonomy_version"] == "2026-09-seed" for _, payload in events)
         seqs = [payload["seq"] for _, payload in events]
         assert seqs == sorted(seqs)
@@ -228,17 +234,113 @@ class TestStream:
 
         names: list[str] = []
         with client.stream(
-            "GET", f"/sessions/{created['session_id']}/events?token={_token(client)}"
+            "GET",
+            f"/sessions/{created['session_id']}/events?ticket={created['stream_ticket']}",
         ) as response:
             name = ""
-            for line in response.iter_lines():
+            for line in itertools.islice(response.iter_lines(), 200):
                 if line.startswith("event:"):
                     name = line.split(":", 1)[1].strip()
                 elif line.startswith("data:"):
                     names.append(name)
-                    if name == "done":
+                    if name in ("done", "question"):
                         break
         assert "degraded" in names
+
+    def test_a_second_listener_sees_the_whole_story_not_half_of_it(
+        self, client: TestClient
+    ) -> None:
+        """One queue per session made the stream single-consumer: a reload stole events."""
+        created = _start(client, "Machine will not start, no lights", "Air Compressor CX", "CX-450")
+        url = f"/sessions/{created['session_id']}/events?ticket={created['stream_ticket']}"
+
+        def names_from(stream: object) -> list[str]:
+            seen: list[str] = []
+            name = ""
+            for line in itertools.islice(stream.iter_lines(), 200):  # type: ignore[attr-defined]
+                if line.startswith("event:"):
+                    name = line.split(":", 1)[1].strip()
+                elif line.startswith("data:") and name in _MILESTONES:
+                    seen.append(name)
+                    if name in ("done", "question"):
+                        break
+            return seen
+
+        with client.stream("GET", url) as first:
+            first_names = names_from(first)
+        with client.stream("GET", url) as second:
+            second_names = names_from(second)
+        assert first_names == second_names
+        assert first_names[0] == "candidates.initial"
+
+    def test_the_stream_needs_a_ticket_not_a_bearer_token(self, client: TestClient) -> None:
+        """The credential in the query string is scoped to one session and expires in a minute."""
+        created = _start(client, "Machine will not start", "Air Compressor CX", "CX-450")
+        sid = created["session_id"]
+        assert client.get(f"/sessions/{sid}/events?ticket={_token(client)}").status_code == 401
+
+        other = _start(client, "Oil under the machine", "Water Chiller CH", "CH-200")
+        assert (
+            client.get(f"/sessions/{sid}/events?ticket={other['stream_ticket']}").status_code == 401
+        )
+
+
+class TestAddingDetail:
+    """What someone types after the questions run out is more description, not a new case."""
+
+    def _walk_to_the_end(self, client: TestClient) -> dict:
+        created = _start(
+            client, "Customer says there is oil under the machine", "Water Chiller CH", "CH-200"
+        )
+        view = created
+        while view["question"] is not None:
+            view = client.post(
+                f"/sessions/{view['session_id']}/answers",
+                json={
+                    "question_id": view["question"]["question_id"],
+                    "value": view["question"]["options"][0]["value"],
+                },
+            ).json()
+        return view
+
+    def test_detail_extends_the_session_rather_than_starting_a_new_one(
+        self, client: TestClient
+    ) -> None:
+        """The screen used to concatenate and POST /sessions again, which threw away the
+        answers, reset the three-question budget and orphaned the old session."""
+        view = self._walk_to_the_end(client)
+        answers_before = dict(view["answers"])
+        assert answers_before
+
+        after = client.post(
+            f"/sessions/{view['session_id']}/details",
+            json={"text": "It is coming from under the drain pan"},
+        )
+        assert after.status_code == 200
+        body = after.json()
+        assert body["session_id"] == view["session_id"]
+        assert body["answers"] == answers_before
+        assert "drain pan" in body["description"]
+        assert body["seq"] > view["seq"]
+
+    def test_detail_on_a_closed_session_is_refused(self, client: TestClient) -> None:
+        view = self._walk_to_the_end(client)
+        client.post(
+            f"/sessions/{view['session_id']}/close", json={"confirmed_cause_id": None}
+        )
+        refused = client.post(
+            f"/sessions/{view['session_id']}/details", json={"text": "one more thing"}
+        )
+        assert refused.status_code == 409
+
+    def test_blank_detail_is_refused(self, client: TestClient) -> None:
+        view = self._walk_to_the_end(client)
+        assert (
+            client.post(
+                f"/sessions/{view['session_id']}/details", json={"text": "   "}
+            ).status_code
+            == 422
+        )
 
 
 class TestOneInput:

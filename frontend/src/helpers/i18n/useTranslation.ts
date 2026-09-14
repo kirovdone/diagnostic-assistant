@@ -14,6 +14,7 @@
 // The namespace is accepted and ignored: there is one catalogue here, `common`, which is
 // the only one the copied components ever ask for.
 import { useLocale } from "@/hooks/i18n/LocaleProvider";
+import { useCallback } from "react";
 
 export type TranslateParams = Record<string, string | number>;
 
@@ -39,8 +40,13 @@ export function translate(
 
 export default function useTranslation(_namespace?: string) {
   const { lang, catalogue } = useLocale();
-  return {
-    t: (key: string, params?: TranslateParams): string => translate(catalogue, key, params),
-    lang,
-  };
+  // Memoised on the catalogue, because callers put `t` in effect dependency arrays. A new
+  // function per render there is a fetch per render: the case list re-requested the whole
+  // corpus in a loop, because each response re-rendered, which made a new `t`, which re-ran
+  // the effect that had just fetched.
+  const t = useCallback(
+    (key: string, params?: TranslateParams): string => translate(catalogue, key, params),
+    [catalogue],
+  );
+  return { t, lang };
 }

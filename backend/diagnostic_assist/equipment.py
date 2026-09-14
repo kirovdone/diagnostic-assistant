@@ -46,6 +46,12 @@ FAMILY_CUES: Final[dict[str, tuple[str, ...]]] = {
         "refroidisseur",
         "groupe froid",
         "refrigeratore",
+        "refrigerant",
+        "kaeltemittel",
+        "kaltemittel",
+        "frigorigene",
+        "refrigerante",
+        "short cycling",
     ),
 }
 
@@ -135,15 +141,26 @@ def resolve(text: str, catalogue: Catalogue) -> EquipmentGuess:
     """The machine this text is about, or an empty guess if it does not say."""
     normalized = normalize_text(text)
 
-    for family, types in catalogue.items():
-        for equipment_type in types:
-            if _type_pattern(equipment_type).search(normalized):
-                return EquipmentGuess(
-                    family=family,
-                    equipment_type=equipment_type,
-                    basis=EquipmentBasis.TYPE_CODE,
-                    matched_families=(family,),
-                )
+    hits = [
+        (family, equipment_type)
+        for family, types in catalogue.items()
+        for equipment_type in types
+        if _type_pattern(equipment_type).search(normalized)
+    ]
+    families = tuple(dict.fromkeys(family for family, _ in hits))
+    if len(families) == 1:
+        family, equipment_type = hits[0]
+        return EquipmentGuess(
+            family=family,
+            equipment_type=equipment_type,
+            basis=EquipmentBasis.TYPE_CODE,
+            matched_families=families,
+        )
+    if len(families) > 1:
+        # "Replaced the CX-450 last year; now the CH-200 is leaking" names two machines. Taking
+        # the first in catalogue order would scope the ranking to whichever family happens to be
+        # declared first, so decline and ask instead.
+        return EquipmentGuess(matched_families=families)
 
     for table, basis in (
         (FAMILY_CUES, EquipmentBasis.FAMILY_NAME),

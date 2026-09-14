@@ -91,7 +91,8 @@ class TestDecliningToGuess:
         assert guess.basis is EquipmentBasis.FAMILY_NAME
 
     def test_a_family_the_catalogue_does_not_hold_is_not_offered(self) -> None:
-        """The tables outlive the corpus. A cue for a machine we have no cases for is not"""
+        """The tables outlive the corpus, so a cue for a machine we hold no cases for is
+        not an answer: there is nothing to rank against."""
         assert not resolve("chiller is not cooling", {"Air Compressor CX": ("CX-450",)}).resolved
 
 

@@ -1,0 +1,10 @@
+{
+  "1 similar case": "1 similar case",
+  "{{count}} similar cases_one": "1 similar case",
+  "Ranked from {{count}} closed cases of this exact model._one": "Ranked from one closed case of this exact model.",
+  "Ranked from {{count}} closed cases of this exact model — thin evidence, so read it as a shortlist._one": "Ranked from a single closed case of this exact model — thin evidence, so read it as a shortlist.",
+  "Ranked from {{count}} closed cases across the family rather than this exact model._one": "Ranked from one closed case across the family rather than this exact model.",
+  "Ranked from {{count}} closed cases across the family rather than this exact model — thin evidence, so read it as a shortlist._one": "Ranked from a single closed case across the family rather than this exact model — thin evidence, so read it as a shortlist.",
+  "Ranked from {{count}} closed cases from anywhere in the corpus, which is as wide as it gets._one": "Ranked from one closed case from anywhere in the corpus, which is as wide as it gets.",
+  "Ranked from {{count}} closed cases from anywhere in the corpus, which is as wide as it gets — thin evidence, so read it as a shortlist._one": "Ranked from a single closed case from anywhere in the corpus, which is as wide as it gets — thin evidence, so read it as a shortlist."
+}

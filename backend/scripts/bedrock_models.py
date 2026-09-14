@@ -47,8 +47,11 @@ def main() -> int:
         print("has bedrock:ListFoundationModels and bedrock:ListInferenceProfiles.")
         return 2
 
-    # A granted model is one the account may actually invoke. AWS reports this per model.
-    granted = {
+    # `modelLifecycle.status` is the model's own lifecycle -- whether AWS still offers it --
+    # and says nothing about whether this account may invoke it. A model this account has
+    # never been granted still reads ACTIVE, so the set below is "on offer", not "usable",
+    # and the script says so rather than implying a green light it cannot see.
+    on_offer = {
         m["modelId"]
         for m in foundation
         if m.get("modelLifecycle", {}).get("status") == "ACTIVE"
@@ -71,7 +74,7 @@ def main() -> int:
         print(f"  {mid:<62} {modes}")
 
     print("\nCONFIGURED")
-    ids = {str(p.get("inferenceProfileId", "")) for p in profiles} | granted
+    ids = {str(p.get("inferenceProfileId", "")) for p in profiles} | on_offer
     ok = True
     for label, wanted in (
         ("extraction", BEDROCK_MODEL_ID),

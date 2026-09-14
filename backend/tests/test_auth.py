@@ -5,26 +5,58 @@ from __future__ import annotations
 import time
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from diagnostic_assist.api import app
 from diagnostic_assist.auth import authenticate, issue_token, user_from_token
 
-# Every route that reads or writes case data. The list is here rather than derived from
-# the app so that adding a route and forgetting to protect it fails a test instead of
-# passing one.
-PROTECTED = [
-    ("PATCH", "/auth/me", {"name": "Someone Else"}),
-    ("POST", "/auth/password", {"current_password": "x", "new_password": "xxxxxxxx"}),
-    ("POST", "/sessions", {"description": "anything"}),
-    ("GET", "/sessions/does-not-exist", None),
-    ("POST", "/sessions/does-not-exist/answers", {"question_id": "x", "value": "y"}),
-    ("POST", "/sessions/does-not-exist/close", {"confirmed_cause_id": None}),
-    ("GET", "/cases", None),
-    ("GET", "/cases/C-48211", None),
-    ("GET", "/equipment", None),
-    ("GET", "/taxonomy", None),
-]
+# A body good enough to get each route past validation and as far as the auth check. Every
+# route the app exposes must appear here or in UNPROTECTED, so adding one and forgetting to
+# protect it fails this file rather than passing it -- which a hand-written list of protected
+# routes could not do, because the forgotten route would simply not be in it.
+BODIES: dict[tuple[str, str], dict[str, object] | None] = {
+    # GET /auth/me was missing from the hand-written list this replaced: it is protected,
+    # but nothing proved it until the list came from the app.
+    ("GET", "/auth/me"): None,
+    ("PATCH", "/auth/me"): {"name": "Someone Else"},
+    ("POST", "/auth/password"): {"current_password": "x", "new_password": "xxxxxxxx"},
+    ("POST", "/sessions"): {"description": "anything"},
+    ("GET", "/sessions/{session_id}"): None,
+    ("POST", "/sessions/{session_id}/answers"): {"question_id": "x", "value": "y"},
+    ("POST", "/sessions/{session_id}/close"): {"confirmed_cause_id": None},
+    ("POST", "/sessions/{session_id}/details"): {"text": "more"},
+    ("GET", "/cases"): None,
+    ("GET", "/cases/{case_id}"): None,
+    ("GET", "/equipment"): None,
+    ("GET", "/taxonomy"): None,
+}
+
+# Sign-in cannot require a token, and the SSE channel carries a session-scoped ticket
+# instead of one (EventSource cannot set headers); both are covered by their own tests below.
+UNPROTECTED = {("POST", "/auth/login"), ("GET", "/sessions/{session_id}/events")}
+
+
+def _routes() -> list[tuple[str, str, dict[str, object] | None]]:
+    """Every route the app declares, with a body that reaches its auth check."""
+    found: list[tuple[str, str, dict[str, object] | None]] = []
+    for route in app.routes:
+        # FastAPI's own docs routes are not ours to protect.
+        if not isinstance(route, APIRoute):
+            continue
+        path, methods = route.path, route.methods
+        for method in sorted(methods - {"HEAD", "OPTIONS"}):
+            if (method, path) in UNPROTECTED:
+                continue
+            assert (method, path) in BODIES, f"new route {method} {path}: add it to BODIES"
+            concrete = path.replace("{session_id}", "does-not-exist").replace(
+                "{case_id}", "C-48211"
+            )
+            found.append((method, concrete, BODIES[(method, path)]))
+    return found
+
+
+PROTECTED = _routes()
 
 
 @pytest.fixture
@@ -84,7 +116,19 @@ class TestTokens:
         _, expiry, signature = issue_token(tester).split(":")
         assert user_from_token(f"someone@else.com:{expiry}:{signature}") is None
 
-    @pytest.mark.parametrize("junk", ["", "abc", "a:b", "a:b:c:d", "user@test.com:notanumber:x"])
+    @pytest.mark.parametrize(
+        "junk",
+        [
+            "",
+            "abc",
+            "a:b",
+            "a:b:c:d",
+            "user@test.com:notanumber:x",
+            # A non-ASCII signature: hmac.compare_digest raises TypeError on str arguments
+            # that are not ASCII, which turned a forged token into a 500.
+            "user@test.com:1:\u00e9",
+        ],
+    )
     def test_malformed_tokens_are_nobody(self, junk: str) -> None:
         assert user_from_token(junk) is None
 
@@ -110,7 +154,7 @@ class TestProtectedRoutes:
 
     def test_the_event_stream_rejects_a_bad_query_token(self, anonymous: TestClient) -> None:
         """EventSource cannot set a header, so this route takes the token in the URL."""
-        response = anonymous.get("/sessions/does-not-exist/events?token=nonsense")
+        response = anonymous.get("/sessions/does-not-exist/events?ticket=nonsense")
         assert response.status_code == 401
 
     def test_the_event_stream_requires_a_token_at_all(self, anonymous: TestClient) -> None:
@@ -160,6 +204,12 @@ class TestAccountSettings:
                 ).status_code
                 == 401
             )
+            # The token held before the change is dead: tokens are signed with a key that
+            # includes the password hash, so changing the password revokes every one of them.
+            # This is the only revocation the system has, which is why it is pinned here.
+            assert anonymous.get("/auth/me", headers=dict(signed_in.headers)).status_code == 401
+            signed_in.headers["Authorization"] = f"Bearer {response.json()['token']}"
+            assert signed_in.get("/auth/me").status_code == 200
         finally:
             signed_in.post(
                 "/auth/password",

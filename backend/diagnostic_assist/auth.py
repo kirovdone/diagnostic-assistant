@@ -18,6 +18,7 @@ from .config import (
     SCRYPT_BLOCK_SIZE,
     SCRYPT_COST,
     SCRYPT_PARALLELISATION,
+    STREAM_TICKET_TTL_SECONDS,
 )
 
 
@@ -110,17 +111,34 @@ def authenticate(username: str, password: str) -> User | None:
     return account.user
 
 
-def _sign(payload: str) -> str:
-    """HMAC over the payload, keyed by AUTH_SECRET."""
-    digest = hmac.new(AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256)
+def _sign(payload: str, key: bytes | None = None) -> str:
+    """HMAC over the payload, keyed by AUTH_SECRET and optionally by more."""
+    digest = hmac.new(key or AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256)
     return base64.urlsafe_b64encode(digest.digest()).decode("ascii").rstrip("=")
 
 
+def _token_key(account: _Account) -> bytes:
+    """The signing key for one account's tokens.
+
+    The password hash is part of it, so every token issued before a password change stops
+    verifying the moment the password changes. Without that, the one remediation available
+    to a user whose token leaked would not actually revoke anything.
+    """
+    return AUTH_SECRET.encode("utf-8") + account.password_hash
+
+
+def _verify(payload: str, signature: str, key: bytes | None = None) -> bool:
+    """Constant-time signature check that cannot raise on attacker-supplied bytes."""
+    expected = _sign(payload, key).encode("ascii")
+    return hmac.compare_digest(expected, signature.encode("utf-8", "replace"))
+
+
 def issue_token(user: User, now: float | None = None) -> str:
-    """`username.expiry.signature`, urlsafe-base64, no padding."""
+    """`username:expiry:signature`; only the signature is urlsafe-base64 without padding."""
+    account = _ACCOUNTS[user.username]
     expiry = int((now if now is not None else time.time()) + AUTH_TOKEN_TTL_SECONDS)
     payload = f"{user.username}:{expiry}"
-    return f"{payload}:{_sign(payload)}"
+    return f"{payload}:{_sign(payload, _token_key(account))}"
 
 
 def user_from_token(token: str, now: float | None = None) -> User | None:
@@ -129,7 +147,10 @@ def user_from_token(token: str, now: float | None = None) -> User | None:
     if len(parts) != 3:
         return None
     username, raw_expiry, signature = parts
-    if not hmac.compare_digest(_sign(f"{username}:{raw_expiry}"), signature):
+    account = _ACCOUNTS.get(username)
+    if account is None:
+        return None
+    if not _verify(f"{username}:{raw_expiry}", signature, _token_key(account)):
         return None
     try:
         expiry = int(raw_expiry)
@@ -137,5 +158,30 @@ def user_from_token(token: str, now: float | None = None) -> User | None:
         return None
     if expiry <= (now if now is not None else time.time()):
         return None
-    account = _ACCOUNTS.get(username)
-    return account.user if account else None
+    return account.user
+
+
+def issue_stream_ticket(session_id: str, now: float | None = None) -> str:
+    """A short-lived credential for one session's SSE channel.
+
+    EventSource cannot set headers, so whatever authorises the stream travels in the query
+    string and lands verbatim in every access log and proxy. A bearer token there is a
+    12-hour credential written to disk in plain text; this is a minute, bound to one session
+    id, and useless on any other route.
+    """
+    expiry = int((now if now is not None else time.time()) + STREAM_TICKET_TTL_SECONDS)
+    return f"{expiry}:{_sign(f'stream:{session_id}:{expiry}')}"
+
+
+def stream_ticket_is_valid(session_id: str, ticket: str, now: float | None = None) -> bool:
+    """Whether this ticket was minted for this session and has not expired."""
+    raw_expiry, _, signature = ticket.partition(":")
+    if not signature:
+        return False
+    if not _verify(f"stream:{session_id}:{raw_expiry}", signature):
+        return False
+    try:
+        expiry = int(raw_expiry)
+    except ValueError:
+        return False
+    return expiry > (now if now is not None else time.time())

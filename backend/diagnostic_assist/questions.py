@@ -146,7 +146,10 @@ TEMPLATES: Final[tuple[QuestionTemplate, ...]] = (
     ),
 )
 
-# STUB: the templates above are the questions the corpus can answer for itself, because
+# STUB: five hand-written templates, each asking about a feature normalize.py can read back
+# out of the answer. Production derives the question bank per equipment family from the
+# features that actually separate that family's causes, and re-fits the gain floor on real
+# sessions rather than on an estimate over 22 cases.
 
 
 CANONICAL_VALUES: Final[dict[str, tuple[str, ...]]] = {

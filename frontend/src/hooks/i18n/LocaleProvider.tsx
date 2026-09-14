@@ -34,6 +34,10 @@ export const LOCALE_COOKIE = "NEXT_LOCALE";
 
 type Catalogue = Record<string, string>;
 
+// One empty catalogue, not a new one per render: `catalogue` is what memoises `t`, so a
+// fresh `{}` on every English render would defeat it and put callers back in a fetch loop.
+const EMPTY: Catalogue = {};
+
 interface LocaleValue {
   lang: string;
   setLang: (lang: string) => void;
@@ -43,7 +47,7 @@ interface LocaleValue {
 const LocaleContext = createContext<LocaleValue>({
   lang: DEFAULT_LOCALE,
   setLang: () => {},
-  catalogue: {},
+  catalogue: EMPTY,
 });
 
 // The cookie is an external store, so it is read through the API React provides for one.
@@ -75,20 +79,25 @@ const serverLocale = (): string => DEFAULT_LOCALE;
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const lang = useSyncExternalStore(subscribe, readLocale, serverLocale);
-  const [catalogue, setCatalogue] = useState<Catalogue>({});
+  const [catalogue, setCatalogue] = useState<Catalogue>(EMPTY);
+
+  // The document language follows the locale, so a screen reader reads German text with
+  // German pronunciation rather than announcing it as English.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   useEffect(() => {
     let cancelled = false;
-    // English is the key set: there is no file to fetch, and a missing key already falls
-    // back to the key. The resolved promise keeps both paths off the synchronous render.
-    const loading: Promise<Catalogue> =
-      lang === DEFAULT_LOCALE
-        ? Promise.resolve({})
-        : fetch(`/locales/${lang}/common.json`)
-            .then((response) => (response.ok ? (response.json() as Promise<Catalogue>) : {}))
-            // A missing or broken catalogue leaves every string at its English key, which
-            // is what a missing key does anyway. Degraded, never blank.
-            .catch(() => ({}));
+    // English is the key set, so its file holds only what a key cannot carry: the singular
+    // forms. `{{count}} similar cases` is its own English translation, but it cannot also be
+    // "1 similar case", and 9 of the 14 causes in this corpus are supported by exactly one
+    // case -- so the plural bug was on most rows of most rankings.
+    const loading: Promise<Catalogue> = fetch(`/locales/${lang}/common.json`)
+      .then((response) => (response.ok ? (response.json() as Promise<Catalogue>) : EMPTY))
+      // A missing or broken catalogue leaves every string at its English key, which is what
+      // a missing key does anyway. Degraded, never blank.
+      .catch(() => EMPTY);
 
     void loading.then((loaded) => {
       if (!cancelled) setCatalogue(loaded);

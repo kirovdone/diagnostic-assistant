@@ -13,11 +13,11 @@ the number to watch. A labeller at 95% cause accuracy that also invents causes f
 fifth of the corpus which has none has quietly filled the index with confident nonsense,
 and nothing downstream can tell.
 
-Honest caveat, and it applies to any number this script prints: gold_labels.json and the
-fixtures in extractor.py were written by the same person from the same 22 cases, so this
-measures self-consistency and regression, not extraction quality. The moment the
-extractor is a real model the two stop being circular. Until then, treat a drop here as
-informative and a perfect score as meaning nothing.
+Honest caveat, and it applies to any number this script prints: the extractor is a live
+Nova Lite call, so the score is not circular -- but gold_labels.json, the taxonomy and the
+extraction prompt were all written by the same person from the same 22 cases, so a perfect
+score measures agreement with one reader, not extraction quality. Treat a drop here as
+informative and a perfect score as a floor.
 """
 
 from __future__ import annotations

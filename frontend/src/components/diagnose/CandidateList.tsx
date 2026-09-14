@@ -28,7 +28,6 @@ import {
 import { Badge } from "@/components/kit/ui/Badge";
 import { Button } from "@/components/kit/ui/Button";
 import { cn } from "@/helpers/common/cn";
-import { formatProbability } from "@/helpers/diagnostics/formatProbability";
 import useTranslation from "@/helpers/i18n/useTranslation";
 import type { Candidate } from "@/types/diagnostics";
 
@@ -44,6 +43,23 @@ const FILL =
   "linear-gradient(to right, color-mix(in srgb, var(--twc-accent) 8%, transparent), color-mix(in srgb, var(--twc-accent) 0%, transparent))";
 const MUTED_FILL =
   "linear-gradient(to right, color-mix(in srgb, var(--twc-text) 5%, transparent), color-mix(in srgb, var(--twc-text) 0%, transparent))";
+
+// Largest remainder, so a column of rounded percentages sums to exactly 100.
+function apportion(values: number[]): number[] {
+  const scaled = values.map((value) => Math.max(0, value) * 100);
+  const floors = scaled.map(Math.floor);
+  let left = 100 - floors.reduce((total, value) => total + value, 0);
+  const order = scaled
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .sort((a, b) => b.remainder - a.remainder);
+  const result = [...floors];
+  for (const { index } of order) {
+    if (left <= 0) break;
+    result[index] += 1;
+    left -= 1;
+  }
+  return result;
+}
 
 function Share({ value, muted = false }: { value: number; muted?: boolean }) {
   return (
@@ -70,10 +86,19 @@ export function CandidateList({
   onEvidenceClick,
 }: CandidateListProps) {
   const { t } = useTranslation("common");
+
+  // Rounding each number on its own made the column add up to 99 or 101, and a list whose
+  // whole claim is that it is a distribution cannot be seen not to sum. Largest remainder
+  // over every row including "something else": floor them all, then hand the leftover points
+  // to whichever rows were cut hardest. Giving the remainder to the open-set row instead
+  // would have been simpler and wrong -- that number is the one the design will not fudge.
+  const percentages = apportion([...candidates.map((c) => c.probability), otherProbability]);
+  const otherShown = percentages[percentages.length - 1];
+
   return (
     <div className="flex flex-col gap-1.5">
       <Accordion type="single" collapsible className="flex flex-col gap-1.5">
-        {candidates.map((candidate) => (
+        {candidates.map((candidate, index) => (
           <AccordionItem key={candidate.cause_id} value={candidate.cause_id}>
             <AccordionTrigger className={HEADER}>
               <Share value={candidate.probability} />
@@ -84,7 +109,7 @@ export function CandidateList({
                 <Badge variant="neutral" label={t("No part")} />
               )}
               <span className="ml-auto pr-2 text-sm font-semibold tabular-nums">
-                {formatProbability(candidate.probability)}
+                {percentages[index]}%
               </span>
             </AccordionTrigger>
 
@@ -136,7 +161,7 @@ export function CandidateList({
             {t("Something else")}
           </span>
           <span className="shrink-0 text-sm font-semibold tabular-nums text-textLight">
-            {formatProbability(otherProbability)}
+            {otherShown}%
           </span>
           {/* Sits where the accordion chevron does above, so the numbers line up. */}
           <span className="w-3.75 shrink-0" aria-hidden />

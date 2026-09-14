@@ -38,7 +38,7 @@ RATES: dict[str, tuple[float, float]] = {
     "eu.anthropic.claude-sonnet-4-6": (3.00, 15.00),
     "eu.anthropic.claude-opus-4-5-20251101-v1:0": (5.00, 25.00),
 }
-DEFAULT = ["eu.amazon.nova-lite-v1:0", "eu.amazon.nova-pro-v1:0",
+DEFAULT = ["eu.amazon.nova-lite-v1:0", "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-pro-v1:0",
            "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", "eu.anthropic.claude-sonnet-4-6"]
 
 
@@ -80,9 +80,12 @@ def main(model_ids: list[str]) -> int:
         rate = RATES.get(model_id)
         cost = "—"
         if rate:
-            sent = [c for c in cases if labels[c.case_id].confidence != 0.9]  # skipped pre-checks
-            tok_in = sum(len(c.full_text) / 4 + 550 for c in sent)
-            cost = f"${tok_in / 1e6 * rate[0] + len(sent) * 100 / 1e6 * rate[1]:.4f}"
+            # The tokens Bedrock says it billed, accumulated by the extractor over the run.
+            # A chars/4 estimate was out by about half, and inferring which cases were sent
+            # from a confidence sentinel broke whenever a model returned that confidence.
+            billed = extractor.input_tokens / 1e6 * rate[0]
+            billed += extractor.output_tokens / 1e6 * rate[1]
+            cost = f"${billed:.4f}"
         print(
             f"{model_id:<46}{cause_ok}/{cause_n:<6}{excl_ok}/{excl_n:<5}"
             f"{non_en_ok}/{non_en_n:<6}{elapsed:>7.1f}{cost:>10}"

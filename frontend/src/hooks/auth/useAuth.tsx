@@ -22,6 +22,7 @@ import {
   login as apiLogin,
   me,
   setAuthToken,
+  setUnauthorizedHandler,
   updateProfile as apiUpdateProfile,
 } from "@/helpers/api/diagnosticAssist";
 import type { User } from "@/types/diagnostics";
@@ -88,9 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .then((signedIn) => {
             if (!cancelled) setUser(signedIn);
           })
-          .catch(() => {
-            setAuthToken(null);
-            writeStoredToken(null);
+          .catch((caught: unknown) => {
+            // Only a refusal means the token is dead. A network blip on a cold start would
+            // otherwise throw away a perfectly good session and ask for the password again.
+            if (caught instanceof ApiError && caught.status === 401) {
+              setAuthToken(null);
+              writeStoredToken(null);
+            }
           })
       : Promise.resolve();
 
@@ -118,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(
         error instanceof ApiError && error.status === 401
           ? "Wrong username or password."
-          : "Could not reach the backend. Is it running on port 8000?",
+          : "Could not reach the backend at {{url}}.",
       );
     }
   }, []);
@@ -130,8 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
     try {
       const { token } = await apiChangePassword(currentPassword, newPassword);
-      // The server hands back a fresh token. Holding it means this browser keeps working
-      // if per-user token invalidation is added later.
+      // The server hands back a fresh token, and the old one is already dead: tokens are
+      // signed with a key that includes the password hash. Holding this one is what keeps
+      // the tab that changed the password signed in.
       setAuthToken(token);
       writeStoredToken(token);
     } catch (error) {
@@ -148,6 +154,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writeStoredToken(null);
     setUser(null);
   }, []);
+
+  // A 401 from anywhere means this browser is no longer signed in. Without this every
+  // screen toasts its own version of the backend's "invalid or expired token" and the user
+  // is left on a signed-in shell where nothing works.
+  useEffect(() => {
+    setUnauthorizedHandler(signOut);
+    return () => setUnauthorizedHandler(null);
+  }, [signOut]);
 
   const value = useMemo<AuthValue>(
     () => ({ user, loading, signIn, signOut, updateName, changePassword }),

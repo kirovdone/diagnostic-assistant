@@ -28,6 +28,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/kit/ui/Sheet";
+import { formatDate } from "@/helpers/formatting/formatDate";
 import useTranslation from "@/helpers/i18n/useTranslation";
 import type { EvidenceCase as EvidenceCaseData } from "@/types/diagnostics";
 
@@ -72,7 +73,7 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
               {data.equipment_family && (
                 <Badge variant="neutral" label={data.equipment_family} />
               )}
-              <Badge variant="neutral" label={data.language.toUpperCase()} />
+              <Badge variant="neutral" label={(data.language ?? "").toUpperCase() || "?"} />
               {data.outcome_status && (
                 <Badge
                   variant={STATUS_TONE[data.outcome_status] ?? "neutral"}
@@ -81,11 +82,9 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
               )}
               {data.created_at && (
                 <span className="text-xs text-textLight">
-                  {new Date(data.created_at).toLocaleDateString(lang, {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}
+                  {/* formatDate, not toLocaleDateString(lang): bare "en" gives US month-first
+                      order, so the same case read 14 Sep 2026 in the table and Sep 14, 2026 here. */}
+                  {formatDate(data.created_at, lang)}
                 </span>
               )}
             </div>

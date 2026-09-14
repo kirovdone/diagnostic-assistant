@@ -56,8 +56,14 @@ class CaseIndex:
         similarity: TextSimilarity | None = None,
     ) -> None:
         self._similarity: TextSimilarity = similarity or default_similarity()
+        # Every equipment type code in the corpus has the shape of a lettered fault code, so
+        # the extractor is told to ignore them: naming the machine is not reporting a fault.
+        self.type_codes: frozenset[str] = frozenset(
+            case.equipment_type.upper() for case in cases
+        )
+        self._known_families: frozenset[str] = frozenset(case.equipment_family for case in cases)
         self._entries: list[LabelledCase] = [
-            LabelledCase(case=case, label=label, features=features_for_case(case))
+            LabelledCase(case=case, label=label, features=features_for_case(case, self.type_codes))
             for case in cases
             if (label := labels.get(case.case_id)) is not None
             and label.cause_id is not None
@@ -114,7 +120,7 @@ class CaseIndex:
         if not self._entries:
             return SearchResult((), "global")
 
-        query_features = extract_features(text)
+        query_features = extract_features(text, self.type_codes)
 
         type_indices = [
             i
@@ -133,6 +139,14 @@ class CaseIndex:
         family_neighbours = self._score_subset(text, query_features, family_indices)
         if family_neighbours:
             return SearchResult(tuple(family_neighbours), "family")
+
+        if equipment_family in self._known_families:
+            # A family the corpus knows is as wide as the search goes, even when nothing in it
+            # clears the floor: every cause outside it is one this machine cannot have, so
+            # widening could only offer impossible causes. An empty family result is the
+            # honest answer. A family the corpus has never seen is the one exception below --
+            # there is no "outside" to rule out, and the ranker moves the mass to "other".
+            return SearchResult((), "family")
 
         everything = list(range(len(self._entries)))
         return SearchResult(tuple(self._score_subset(text, query_features, everything)), "global")

@@ -38,7 +38,11 @@ class Case(BaseModel):
 
     @property
     def full_text(self) -> str:
-        """Everything written about the case, for retrieval and for span validation."""
+        """Everything written about the case, for span validation.
+
+        Not what is embedded: the index compares customer text with customer text, because a
+        live session has only the customer's half.
+        """
         return " ".join(
             part
             for part in (self.customer_description, self.technician_notes, self.resolution_text)
@@ -60,6 +64,11 @@ class LabelFlag(StrEnum):
     """Why a human might want to look at this label."""
 
     UNMAPPED = "UNMAPPED"
+
+    # An abstention and a failed call are not rejections. Keeping all three under UNMAPPED
+    # would make the UNMAPPED rate -- the alarm for a model inventing causes -- unreadable.
+    NO_CAUSE_EXTRACTED = "NO_CAUSE_EXTRACTED"
+    EXTRACTION_FAILED = "EXTRACTION_FAILED"
 
     NO_PART_FIX = "NO_PART_FIX"
 
@@ -96,7 +105,7 @@ class EquipmentGuess(BaseModel):
 
     @property
     def resolved(self) -> bool:
-        """True once the session has an outcome recorded."""
+        """True when a family could be read out of the text."""
         return self.family is not None
 
 
@@ -259,4 +268,7 @@ class Session(BaseModel):
             for question_id, value in self.answers.items()
             if question_id != EQUIPMENT_QUESTION_ID
         ]
-        return " ".join([self.description, *symptoms])
+        # Separated, not spaced: a description ending in a negated clause ("no alarm") would
+        # otherwise swallow the answer phrase into the negation and lose the feature the
+        # question was asked to set.
+        return "; ".join([self.description, *symptoms])

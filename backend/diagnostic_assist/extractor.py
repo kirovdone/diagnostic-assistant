@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Final, Protocol
 
 from .config import (
+    BEDROCK_CONNECT_TIMEOUT_SECONDS,
     BEDROCK_MAX_ATTEMPTS,
     BEDROCK_MODEL_ID,
+    BEDROCK_READ_TIMEOUT_SECONDS,
     BEDROCK_REGION,
     aws_credentials_available,
 )
+from .errors import ModelUnavailableError, UpstreamError
 from .models import Case, ExtractedLabel
 from .taxonomy import TAXONOMY_VERSION, all_causes
+
+log = logging.getLogger(__name__)
 
 
 class LabelExtractor(Protocol):
@@ -80,12 +86,59 @@ def _bedrock_config() -> Any:
     """
     from botocore.config import Config
 
-    return Config(retries={"max_attempts": BEDROCK_MAX_ATTEMPTS, "mode": "adaptive"})
+    # Without explicit timeouts botocore waits 60 s to connect and 60 s to read, which is
+    # twenty times the budget the first candidates are meant to appear in.
+    return Config(
+        retries={"max_attempts": BEDROCK_MAX_ATTEMPTS, "mode": "adaptive"},
+        connect_timeout=BEDROCK_CONNECT_TIMEOUT_SECONDS,
+        read_timeout=BEDROCK_READ_TIMEOUT_SECONDS,
+    )
+
+
+def _one_answer(blocks: list[Any], case_id: str) -> Any:
+    """The single answer in a response, out of however many tool calls the model made.
+
+    The tool call is forced, so one is expected -- but Nova returns two on some cases
+    (measured: 8 of 20 calls on C-49355), typically a committed answer at 0.95 beside an
+    abstention at 0.05. Read as what the confidence field says, that is one answer and a
+    reservation, not two answers, so the most confident block wins. The first block happened
+    to be the committed one every time it was observed, but nothing in the API promises an
+    order, and picking by position would be luck rather than a rule.
+
+    Two different causes asserted at the same confidence is the case that cannot be resolved
+    from the response: the model did not commit, and choosing for it would be the repair this
+    pipeline refuses to do anywhere else. That row goes to a human instead.
+    """
+    if not blocks:
+        raise RuntimeError(f"Bedrock returned no tool call for {case_id}")
+    if len(blocks) == 1:
+        return blocks[0]
+
+    def confidence(block: Any) -> float:
+        try:
+            return float(block.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    ranked = sorted(blocks, key=confidence, reverse=True)
+    top = confidence(ranked[0])
+    tied = {b.get("cause_id") for b in ranked if confidence(b) == top}
+    if len(tied) > 1:
+        raise RuntimeError(
+            f"Bedrock returned {len(blocks)} tool calls for {case_id} with no most-confident "
+            f"answer among {sorted(str(c) for c in tied)}"
+        )
+    log.warning("%s: %d tool calls; taking the most confident", case_id, len(blocks))
+    return ranked[0]
 
 
 # STUB: one call per case. The 100k backfill uses CreateModelInvocationJob in batch.
 class BedrockLabelExtractor:
-    """Extraction against Claude on Amazon Bedrock, with the output shape enforced."""
+    """Extraction against the configured Bedrock model (Nova Lite by default).
+
+    The output shape is held by a forced tool call, so the model cannot answer in prose, add
+    a field or omit one.
+    """
 
     TOOL_NAME: Final[str] = "record_root_cause"
 
@@ -93,6 +146,9 @@ class BedrockLabelExtractor:
         self._model_id = model_id
         self._region = region
         self._client: Any | None = None
+        # What the run actually cost, from the API's own counters rather than an estimate.
+        self.input_tokens = 0
+        self.output_tokens = 0
 
     def _bedrock(self) -> Any:
         """One client per instance. boto3 resolves credentials itself; none are passed."""
@@ -106,7 +162,28 @@ class BedrockLabelExtractor:
 
     def extract(self, case: Case) -> ExtractedLabel:
         """One call per case, with the output shape held by a forced tool call."""
-        response = self._bedrock().converse(
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            response = self._call(case)
+        except (BotoCoreError, ClientError) as exc:
+            # An outage is not a bad label: it must not be swallowed into the review queue.
+            raise UpstreamError(type(exc).__name__) from exc
+
+        usage = response.get("usage", {})
+        self.input_tokens += int(usage.get("inputTokens", 0))
+        self.output_tokens += int(usage.get("outputTokens", 0))
+
+        blocks = [
+            b["toolUse"]["input"]
+            for b in response["output"]["message"]["content"]
+            if "toolUse" in b
+        ]
+        return ExtractedLabel.model_validate(_one_answer(blocks, case.case_id))
+
+    def _call(self, case: Case) -> Any:
+        """The Converse call itself."""
+        response: Any = self._bedrock().converse(
             modelId=self._model_id,
             messages=[{"role": "user", "content": [{"text": build_prompt(case)}]}],
             inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
@@ -126,20 +203,14 @@ class BedrockLabelExtractor:
                 "toolChoice": {"tool": {"name": self.TOOL_NAME}},
             },
         )
-        for block in response["output"]["message"]["content"]:
-            if "toolUse" in block:
-                return ExtractedLabel.model_validate(block["toolUse"]["input"])
-        raise RuntimeError(
-            f"Bedrock returned no tool call for {case.case_id}; "
-            f"stop reason {response.get('stopReason')!r}"
-        )
+        return response
 
 
 def default_extractor() -> LabelExtractor:
     """A real model, or an explicit refusal. There is no third option."""
     if aws_credentials_available():
         return BedrockLabelExtractor()
-    raise RuntimeError(
+    raise ModelUnavailableError(
         "No label extractor is available: no AWS credentials found. Configure them "
         "(`aws configure`, or AWS_PROFILE / AWS_ACCESS_KEY_ID in the environment), install "
         "the extra with `uv sync --extra bedrock`, and grant the account access to "

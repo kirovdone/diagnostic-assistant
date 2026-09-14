@@ -35,6 +35,14 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
+// What to do when the server stops accepting the token we hold. Registered by the auth
+// provider rather than imported, so this module keeps knowing only about the backend.
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -45,6 +53,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
+    // An expired or revoked token is not an error for the caller to report: it means this
+    // browser is no longer signed in, and every later call would fail the same way. Sign-in
+    // itself is excluded, where a 401 is a wrong password and the form has to say so.
+    if (response.status === 401 && !path.startsWith("/auth/login")) onUnauthorized?.();
     // Prefer the backend's own `detail`. Without this every failure reads
     // "POST /sessions failed with 503" and the reason is thrown away.
     let detail: string | undefined;
@@ -80,8 +92,10 @@ export function updateProfile(name: string): Promise<User> {
   return request<User>("/auth/me", { method: "PATCH", body: JSON.stringify({ name }) });
 }
 
-// Returns a fresh token, because the server issues one. The old one still verifies, which
-// the endpoint's docstring explains and the design note records.
+// Returns a fresh token, because the server issues one and the old one stops verifying:
+// tokens are signed with a key that includes the password hash, so changing the password
+// revokes every token issued before it. Adopting the new one here is what keeps this tab
+// signed in through its own password change.
 export function changePassword(
   currentPassword: string,
   newPassword: string,
@@ -125,6 +139,18 @@ export function submitAnswer(
   });
 }
 
+// More description, once the questions have run out. Not a new session: the answers already
+// given still hold, and the three-question budget is not refunded.
+export function addDetail(
+  sessionId: string,
+  body: { text: string; language: string },
+): Promise<SessionView> {
+  return request<SessionView>(`/sessions/${sessionId}/details`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function closeSession(
   sessionId: string,
   confirmedCauseId: string | null,
@@ -135,8 +161,10 @@ export function closeSession(
   });
 }
 
-export function listCases(): Promise<LabelRow[]> {
-  return request<LabelRow[]>("/cases");
+// The review queue localises its cause names like every other call that produces one, so
+// a German dispatcher does not read English causes under a German menu.
+export function listCases(language: string): Promise<LabelRow[]> {
+  return request<LabelRow[]>(`/cases?language=${encodeURIComponent(language)}`);
 }
 
 export function getCase(caseId: string, language: string): Promise<EvidenceCase> {
@@ -144,10 +172,10 @@ export function getCase(caseId: string, language: string): Promise<EvidenceCase>
   return request<EvidenceCase>(`/cases/${caseId}?language=${encodeURIComponent(language)}`);
 }
 
-// The token rides in the query string because EventSource cannot set a header. The
-// backend's stream_events docstring carries the argument for accepting that here and
-// nowhere else.
-export function eventStreamUrl(sessionId: string): string {
-  const token = encodeURIComponent(authToken ?? "");
-  return `${API_URL}/sessions/${sessionId}/events?token=${token}`;
+// EventSource cannot set a header, so the credential rides in the query string and lands in
+// every access log. That is why this is a ticket the server mints with each view -- sixty
+// seconds, bound to this session id -- and not the bearer token, which is good for twelve
+// hours everywhere. The backend's stream_events docstring carries the same argument.
+export function eventStreamUrl(sessionId: string, ticket: string): string {
+  return `${API_URL}/sessions/${sessionId}/events?ticket=${encodeURIComponent(ticket)}`;
 }

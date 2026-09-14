@@ -2,7 +2,11 @@
 
 // Origin: the in-house design system, src/components/ui/Button.tsx. Copied to keep this app native to the design system.
 //
-// Only change: @/components/ -> @/components/kit/; next-translate/useTranslation -> @/helpers/i18n/useTranslation.
+// Changed here: @/components/ -> @/components/kit/; next-translate/useTranslation ->
+// @/helpers/i18n/useTranslation. And sub-menu items are rendered through
+// renderDropdownItem rather than spread straight into Button, which put `actions` on the
+// DOM node as actions="[object Object]" and dropped the trailing-action buttons a
+// sub-item is allowed to carry.
 
 import { Loader } from "@/components/kit/feedback/Loader";
 import { FOCUS_RING } from "@/consts/styles";
@@ -318,14 +322,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
                 alignOffset={-16}
                 className="space-y-1"
               >
-                {item.items.map((subItem, j) => (
-                  <Button
-                    key={`item-${i}-sub-${j}`}
-                    {...subItem}
-                    size={subItem.size ?? "small"}
-                    block
-                  />
-                ))}
+                {item.items.map((subItem, j) => renderDropdownItem(subItem, j))}
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>

@@ -13,14 +13,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  addDetail,
   ApiError,
   closeSession,
   createSession,
   eventStreamUrl,
+  getSession,
   submitAnswer,
 } from "@/helpers/api/diagnosticAssist";
 import useTranslation from "@/helpers/i18n/useTranslation";
 import type { DiagnosisEvent, SessionView } from "@/types/diagnostics";
+
+// Whatever the user sees has to be a translation key this app owns. A raw exception from
+// fetch is the browser's own wording, in the browser's own language, naming a URL the user
+// never typed -- so a non-API failure becomes the one key that says where we were looking.
+function errorMessage(caught: unknown, fallbackKey: string): string {
+  if (caught instanceof ApiError) return caught.message;
+  return fallbackKey;
+}
 
 // What the assistant says when it has nothing left worth asking. The server decides that,
 // not the screen: it stops when no question clears MIN_INFORMATION_GAIN_BITS.
@@ -56,6 +66,8 @@ export interface DiagnosisSession {
   turns: Turn[];
   start: (input: StartInput) => Promise<void>;
   answer: (questionId: string, value: string) => Promise<void>;
+  // More description on the session already open, for text typed after the questions run out.
+  detail: (text: string) => Promise<void>;
   finish: (causeId: string | null) => Promise<void>;
   reset: () => void;
 }
@@ -100,14 +112,19 @@ export function useDiagnosisSession(): DiagnosisSession {
   }, []);
 
   const openStream = useCallback(
-    (sessionId: string) => {
+    (sessionId: string, ticket: string | null | undefined) => {
       closeStream();
-      const source = new EventSource(eventStreamUrl(sessionId));
+      if (!ticket) return;
+      const source = new EventSource(eventStreamUrl(sessionId, ticket));
       sourceRef.current = source;
       setStreaming(true);
 
       const handle = (raw: MessageEvent<string>, name: DiagnosisEvent["event"]) => {
         const payload = JSON.parse(raw.data) as DiagnosisEvent;
+        // Closed before the staleness guard: the server hangs up after `done`, so a `done`
+        // we have already applied still has to close this side. Left to the guard below, a
+        // replayed `done` was dropped and EventSource reconnected forever.
+        if (name === "done") closeStream();
         if (payload.seq <= seqRef.current) return;
         seqRef.current = payload.seq;
 
@@ -122,7 +139,6 @@ export function useDiagnosisSession(): DiagnosisSession {
         });
 
         if (name === "degraded") setDegraded(true);
-        if (name === "done") closeStream();
       };
 
       for (const name of [
@@ -157,7 +173,7 @@ export function useDiagnosisSession(): DiagnosisSession {
         const view = await createSession({ ...input, language: lang });
         applyView(view);
         say("system", view.question ? view.question.prompt : REVIEW_PROMPT, view);
-        openStream(view.session_id);
+        openStream(view.session_id, view.stream_ticket);
       } catch (caught) {
         const status = caught instanceof ApiError ? caught.status : undefined;
         if (status === 503) {
@@ -166,7 +182,7 @@ export function useDiagnosisSession(): DiagnosisSession {
               "Nothing is guessed when that happens.",
           );
         } else {
-          setError(caught instanceof Error ? caught.message : "Could not reach the backend");
+          setError(errorMessage(caught, "Could not reach the backend at {{url}}."));
         }
       } finally {
         setPending(false);
@@ -179,6 +195,7 @@ export function useDiagnosisSession(): DiagnosisSession {
     async (questionId: string, value: string) => {
       if (!session) return;
       setPending(true);
+      setError(null);
       say("user", value);
       try {
         const view = await submitAnswer(session.session_id, {
@@ -189,7 +206,29 @@ export function useDiagnosisSession(): DiagnosisSession {
         applyView(view);
         say("system", view.question ? view.question.prompt : REVIEW_PROMPT, view);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not send the answer");
+        setError(errorMessage(caught, "Could not send the answer"));
+      } finally {
+        setPending(false);
+      }
+    },
+    [applyView, lang, say, session],
+  );
+
+  // Free text after the questions have run out. The screen used to concatenate it onto the
+  // original description and open a new session, which discarded every answer already given,
+  // handed back a fresh budget of three questions and left the old session orphaned.
+  const detail = useCallback(
+    async (text: string) => {
+      if (!session || session.status === "CLOSED") return;
+      setPending(true);
+      setError(null);
+      say("user", text);
+      try {
+        const view = await addDetail(session.session_id, { text, language: lang });
+        applyView(view);
+        say("system", view.question ? view.question.prompt : REVIEW_PROMPT, view);
+      } catch (caught) {
+        setError(errorMessage(caught, "Could not send the answer"));
       } finally {
         setPending(false);
       }
@@ -205,6 +244,7 @@ export function useDiagnosisSession(): DiagnosisSession {
     async (causeId: string | null) => {
       if (!session || session.status === "CLOSED") return;
       setPending(true);
+      setError(null);
       try {
         applyView(await closeSession(session.session_id, causeId));
         closeStream();
@@ -212,18 +252,25 @@ export function useDiagnosisSession(): DiagnosisSession {
         const status = caught instanceof ApiError ? caught.status : undefined;
         if (status === 409) {
           // Someone else closed it first — the technician on their own screen, most likely.
-          // That is the outcome we wanted, so reconcile rather than complain.
+          // That is the outcome we wanted, so take their version rather than complain.
           closeStream();
+          try {
+            applyView(await getSession(session.session_id, lang));
+          } catch {
+            // The reconciling read is a courtesy; the close itself already happened.
+          }
+        } else if (status === 404) {
+          setError("This session has expired. Start over.");
         } else if (status === 422) {
           setError("That cause is not in the current taxonomy. Reload and try again.");
         } else {
-          setError(caught instanceof Error ? caught.message : "Could not close the session");
+          setError(errorMessage(caught, "Could not close the session"));
         }
       } finally {
         setPending(false);
       }
     },
-    [applyView, closeStream, session],
+    [applyView, closeStream, lang, session],
   );
 
   const reset = useCallback(() => {
@@ -235,5 +282,17 @@ export function useDiagnosisSession(): DiagnosisSession {
     setTurns([]);
   }, [closeStream]);
 
-  return { session, pending, error, degraded, streaming, turns, start, answer, finish, reset };
+  return {
+    session,
+    pending,
+    error,
+    degraded,
+    streaming,
+    turns,
+    start,
+    answer,
+    detail,
+    finish,
+    reset,
+  };
 }
