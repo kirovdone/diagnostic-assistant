@@ -56,8 +56,7 @@ has to require the press to close a job.
 | System asks which machine → taps **Water Chiller CH** | `equipment.py` declines rather than guesses. Over the 22 descriptions it resolves 12, declines 10, wrong 0 |
 | CH-200 has 3 votable cases, under `MIN_TYPE_NEIGHBOURS` 5 → backs off to family, and says so | Below 5, one mislabelled case can swing the ranking alone |
 | **Blocked condensate drain** on top, then pump seal, corroded fitting, Schrader leak — **44% reserved for something else** | **The system contradicts the customer.** They said oil; the corpus knows a puddle under a chiller is usually condensate. That is the whole value of matching against history rather than reading the words |
-| Asks *"How fast is it coming out?"* → *"continuous flow, puddle"* | Severity is the question worth asking; fluid is not, because the dispatcher already said oil. Answers are appended to the text and everything re-ranks — they never filter |
-| Same order, firmer, reserved share falls to **39%** | Nothing new clears the floor, so no second question is asked |
+| Asks *"How fast is it coming out?"* → *"continuous flow, puddle"*. Same order, firmer, reserved falls to **39%** | Severity is the question worth asking; fluid is not, because the dispatcher already said oil. Answers are appended to the text and everything re-ranks — they never filter. Nothing new clears the floor, so no second question is asked |
 | Technician confirms **blocked condensate drain** | C-48712's own notes: *"No oil leak found. Fluid was condensate from the chiller drain pan, drain line was blocked."* |
 | **Same query, that case held out** — the regime section 4 measures. Pump seal on top, and **49% reserved** | **This is the honest half.** With the cause gone from the corpus the system cannot name it, offers only oil causes, and reserves half its probability for something it does not have. A ranker that normalised over its neighbours would have shown a confident pump seal instead |
 
@@ -142,67 +141,44 @@ today both live in process.
 }
 ```
 
-**Family and type are the retrieval scope, not decoration:** the ladder searches the type,
-widens to the family, and stops. `language` is recorded and never translated — a case is
-evidence, and translating evidence loses the words the match was made on.
-
 **`evidence_weight` comes from `outcome_status`, never from `confidence`** — CONFIRMED 1.0,
-PROVISIONAL 0.25, else 0. A confidently labelled warranty swap is still worth nothing, and
-in practice the model returns nearly the same confidence every time: a stock answer, not an
-estimate. `evidence_spans` must occur in the case text or the label is refused.
-`taxonomy_version` is pinned so re-inducing never silently reinterprets labels already
-written. `NO_PART_FIX` is here because nothing was replaced — the drain was cleared, and a
-parts-derived label would have produced nothing at all for this case.
+PROVISIONAL 0.25, else 0. A confidently labelled warranty swap is still worth nothing, and in
+practice the model returns nearly the same confidence every time: a stock answer, not an
+estimate. **Only `evidence_weight > 0` is indexed** — 19 of 22 here. The other three have real
+symptom text and no trustworthy answer, and letting that text into a ranking is the most
+expensive mistake available in this system.
 
 **`features` derives from `customer_description` only**, because a live session has nothing
-else. The field is `fluid_claimed`, not `fluid`: here it says **oil** and the confirmed
-cause is a condensate drain, which is why the case also carries `CUSTOMER_SYMPTOM_MISMATCH`
-and why the name records who said it. `error_codes_absent` is its own field, because "no
-codes shown" is a different fact from nobody mentioning codes, and only one of them rules
-causes out.
+else. The field is `fluid_claimed`, not `fluid`: here it says **oil** and the confirmed cause
+is a condensate drain, which is why the case also carries `CUSTOMER_SYMPTOM_MISMATCH` and why
+the name records who said it. The embedding covers the technician text, which feature
+extraction must not — that buys back the recall this costs. `language` is recorded and never
+translated: a case is evidence, and translating evidence loses the words the match was made on.
 
-**The embedding covers the technician text**, which feature extraction must not — that buys
-back the recall the line above costs. `input_type` is stored because Cohere trains the two
-sides asymmetrically and mixing them costs recall silently; `model` is stored because query
-and document vectors must come from one set of weights, and if it ever changes every vector
-in the index is stale with nothing else to say so.
-
-**Only `evidence_weight > 0` is indexed** — 19 of 22 here. The other three have real symptom
-text and no trustworthy answer, and letting that text into a ranking is the most expensive
-mistake available in this system.
-
-**How a new case matches 100,000 old ones:** one OpenSearch round trip — kNN at k=50 with
-`ef_search` 100 on the embedding, plus BM25 over normalised text and a terms clause on
-`error_codes`, both under an `equipment_type` filter, fused by RRF at k=60, keeping 25, on
-OpenSearch's conventional defaults. If a type yields under 5 neighbours it re-issues at
-family level and stops there — never global, because every cause outside the family is one
-the machine cannot have and the ranker drops it anyway. Today it is an in-process scan,
-**O(corpus) per call**, which is the one part of the live path that does not survive real
-volume.
+**How a new case matches 100,000 old ones:** one OpenSearch round trip — kNN on the embedding
+plus BM25 over normalised text, both under an `equipment_type` filter, fused by RRF. If a type
+yields under 5 neighbours it re-issues at family level and stops there, never global, because
+every cause outside the family is one the machine cannot have. Today it is an in-process scan,
+**O(corpus) per call** — the one part of the live path that does not survive real volume.
 
 ### d. The processing
 
 | | How | Cost |
 | --- | --- | --- |
-| **100k backfill** | Glue writes one JSONL record per case to S3, each `modelInput` from `build_prompt` — the same function the live path uses, so the two cannot drift. Step Functions Maps over shards on `CreateModelInvocationJob`, polling on a Wait loop. A second Glue job joins by `recordId`, validates, writes the labels partition; parse failures go to a dead-letter prefix, **never dropped** — a systematic parse failure looks exactly like a systematic absence of that cause. Then embed, bulk-index, flip the alias | tens of dollars of tokens, and an overnight run — queue-bound |
+| **100k backfill** | Bedrock batch inference over JSONL on S3, every prompt built by `build_prompt` — the same function the live path uses, so the two cannot drift. Results are joined back, validated, embedded and bulk-indexed behind an alias flip. Parse failures go to a dead-letter prefix, **never dropped** — a systematic parse failure looks exactly like a systematic absence of that cause | tens of dollars of tokens, and an overnight run |
 | **~500 / day** | EventBridge → SQS → Lambda calling the same extractor. Reserved concurrency 5, so a replay cannot exhaust the Bedrock quota the backfill shares. Deliberately not batched | batching would save pennies and add a day's delay |
 
 **What breaks between 22 cases and a million.** `build_prompt` puts the whole taxonomy in
-every prompt — about half of it today — so **cost scales corpus × taxonomy**, and taxonomy
-grows with corpus: a backfill that is cheap at a hundred thousand cases and fourteen causes
-is not cheap at ten million and a thousand. The fix is small: scope the catalogue to the
-case's equipment family, because a compressor case never needs the chiller causes.
-
-Two thresholds fail the other way — `MIN_TYPE_NEIGHBOURS = 5` and
-`DEGRADED_EVIDENCE_MASS = 2.0` are absolute counts, so at a million cases every type clears
-them always and **the honesty signal dies from abundance**. Both must become relative to the
-type's own distribution.
+every prompt, so **cost scales corpus × taxonomy** and taxonomy grows with corpus — the fix is
+to scope the catalogue to the case's equipment family, because a compressor case never needs
+the chiller causes. Two thresholds fail the other way: `MIN_TYPE_NEIGHBOURS` and
+`DEGRADED_EVIDENCE_MASS` are absolute counts, so at a million cases every type clears them
+always and **the honesty signal dies from abundance**.
 
 ### e. The failure modes, and how I find out
 
-The alarm thresholds below are **starting points, not fitted ones** — conventional defaults
-chosen so something fires rather than nothing, and re-fitted against the first quarter's
-baseline. Saying that once is more honest than defending numbers no data has yet produced.
+The thresholds are **starting points, not fitted ones** — re-fitted against the first
+quarter's baseline.
 
 | What breaks | How it is detected |
 | --- | --- |
@@ -264,20 +240,15 @@ def validate(case: Case, extracted: ExtractedLabel) -> tuple[str | None, list[La
     if case.equipment_family not in cause.families:     # 2. and be possible here
         return None, [LabelFlag.UNMAPPED]
 
-    # 3. A claim with no quotation at all fails, not passes. Checking only the
-    # spans that were offered made silence the safest strategy available to the
-    # model: quote badly and the label is rejected, quote nothing and it sails
-    # through at full evidence weight.
+    # 3. A claim with no quotation at all fails, not passes -- see below.
     if not extracted.evidence_spans:
         return None, [LabelFlag.UNMAPPED, LabelFlag.EVIDENCE_NOT_IN_TEXT]
     if any(not _span_occurs_in(s, case) for s in extracted.evidence_spans):
         return None, [LabelFlag.UNMAPPED, LabelFlag.EVIDENCE_NOT_IN_TEXT]
 
-    # 4. Parts are a consistency check, never a source. A part catalogued against
-    # a different cause contradicts the label; a part we have never seen means
-    # nothing. One supporting part settles it -- technicians fix more than one
-    # thing per visit, and a rule that rejected every multi-fault job sent real
-    # diagnoses to review because the van also carried a filter.
+    # 4. Parts are a consistency check, never a source. One supporting part
+    # settles it: technicians fix more than one thing per visit, and a stricter
+    # rule sent real diagnoses to review because the van also carried a filter.
     catalogued = [p for p in case.parts_replaced if p in PART_TO_CAUSE]
     if catalogued and all(PART_TO_CAUSE[p] != cause.id for p in catalogued):
         return None, [LabelFlag.UNMAPPED, LabelFlag.PART_CAUSE_CONTRADICTION]
@@ -332,15 +303,12 @@ only test here that needs no answer key, and it is the one that found the defect
 
 **The same session, entered in German, still gets it wrong — reproducibly.**
 *"Hydraulikoel laeuft aus"* on the same chiller puts the right cause **second instead of
-first**, and reserves noticeably more for something else. Then it spends one of its three
-questions asking *"What is the fluid?"*, which the user already answered in the first word
-they typed. The English session never asks it. That is the compound bug end to end: a missed
-feature is not just a missed feature, it costs a question too.
-
-German is the *majority* language in this market, so this is a blocker rather than a polish
-item. The fix is one change — move `fluid`, `severity`, `onset` and `recurrence` into the
-extraction call, which already happens. **I measured it rather than assuming it, and the
-result is why the fix is not simply "move the features to the model".**
+first**, then spends one of its three questions asking *"What is the fluid?"* — which the user
+already answered in the first word they typed. The English session never asks it. A missed
+feature is not just a missed feature; it costs a question too. German is the *majority*
+language in this market, so this is a blocker rather than a polish item. The fix is to move
+`fluid` and `severity` into the extraction call that already happens, and **I measured that
+rather than assuming it**:
 
 | Field | What the model does with German | Verdict |
 | --- | --- | --- |
@@ -348,12 +316,10 @@ result is why the fix is not simply "move the features to the model".**
 | `severity` | Correct once the prompt names the two values and permits abstaining; without that it answers `drip` for everything, including a puddle | move it, carefully |
 | `error_codes_absent` | Returns **true on all six probes**, including the English control and cases that never mention a code — and it does that even when the prompt says in so many words to return false when the text is silent | **keep the rules** |
 
-That last row is the whole argument for the split. "No codes shown" and "nobody mentioned
-codes" are different facts and only one of them rules a cause out; a model that collapses
-them manufactures a denial nobody made, which is the same inversion `normalize.py` exists to
-prevent, pointing the other way. So the change is **fluid and severity move, codes stay** —
-and I did not ship even that, because it alters the prompt of the one component nothing
-downstream can check and 22 cases cannot tell me whether it helped.
+That last row is the argument for the split: a model that collapses "no codes shown" into
+"nobody mentioned codes" manufactures a denial nobody made. **Fluid and severity move, codes
+stay** — and I did not ship even that, because it alters the prompt of the one component
+nothing downstream can check and 22 cases cannot tell me whether it helped.
 
 **What would make me stop and rethink.** Four things, written down before measuring, which
 is the part that makes the measurement honest. Exclusion recall under 0.90. A 70% bucket
@@ -371,11 +337,9 @@ gold set, ship the lookup table** — no index, no embeddings, no inference bill
 | **Calibration** | No held-out set exists, so the probabilities are smoothed vote shares — ordered, not calibrated. Cost: **nothing maps 0.40 to "right four times in ten", and a dispatcher loading a van reads it as a frequency.** The screen says `degraded`; that is not the same as being honest about the number |
 | **Deduplication** | Repeat visits to one machine each cast a vote, so one chronic machine can manufacture a cause. No machine or site id exists in the corpus. Cost: a near-duplicate pass cannot tell a chronic machine from a fault the fleet genuinely repeats, so it deletes real evidence too. This is a schema change upstream, not a model |
 | **Durable sessions and outcomes** | In-process dicts. Cost: `close` writes the confirmed cause to memory and loses it on restart — **the only ground truth the running system produces** |
-| **Urgency / SLA scoring** | No contract, response target or site criticality in the corpus. Cost: of the brief's three dispatcher decisions — what to tell the technician, which parts to load, how urgent — this answers the first, gestures at the second and is **silent on the third**. It needs SLA data, not more model |
-| **Technician skill matching, van stock** | No technician, skill or stock field anywhere. Cost: the brief asks that the right technician arrive with the right parts; this ranks causes and stops. Stock decides as much of first-visit fix rate as diagnosis does |
+| **Urgency, technician skill, van stock** | No contract, SLA, site criticality, technician or stock field exists anywhere in the corpus. Cost: of the brief's three dispatcher decisions — what to tell the technician, which parts to load, how urgent — this answers the first, gestures at the second and is **silent on the third**. Stock decides as much of first-visit fix rate as diagnosis does. That needs data upstream, not more model |
 | **Tracing, IaC, roles, rate limits** | No spans, nothing provisions the services, and any signed-in user reaches everything including the review queue that decides what the labeller learns. Cost: real, and the place to fix it is the identity provider that replaces `auth.py` |
 | **The 5% holdout** | Designed, not built. Cost: without it the numbers measure an echo — the system suggests a cause, the technician checks it, the case closes on it, and confirm rate climbs while nothing improves |
-| **A dashboard** | An earlier version had one. It described the same 22 rows the case list shows, one level less precisely. Cost: nothing aggregates the corpus, so "how much was thrown away" is a question you answer by filtering the list. At 100k that stops being adequate and the aggregate belongs on the server anyway |
 
 **Next, in order:** (1) Bedrock batch over 500 stratified cases with an engineer
 blind-labelling 200 — nothing is measured until the gold set is not mine. (2) Move `fluid`
@@ -434,25 +398,20 @@ npm run build        # static export into out/
 [BEDROCK_SETUP.md](BEDROCK_SETUP.md) is the five-step checklist, with the IAM policy and
 what it costs. The test suite does not.
 
-`sample_cases.json` stays in the repository root and is resolved relative to it, not to the
-working directory, so every entry point finds it from anywhere.
-`DIAGNOSTIC_ASSIST_CASES_PATH` overrides it.
-
 ### Signing in
 
 `/login`, one seeded account, printed on the page because a take-home nobody can run is not
 a take-home: `user@test.com` / `user`.
 
 **There is no permission model, and that is a decision rather than an omission.** Whoever
-diagnoses against the corpus also audits what the labeller did to it, because those are the
-same person doing two halves of one job. What that costs is real: no audit log, and no
-restriction on a surface that changes what every future ranking is computed from. The place
-to fix it is the identity provider that replaces `auth.py`, where the roles already exist.
+diagnoses against the corpus also audits what the labeller did to it — the same person doing
+two halves of one job. What it costs is real: no audit log on a surface that decides what
+every future ranking is computed from. The place to fix it is the identity provider that
+replaces `auth.py`.
 
-Override with `DIAGNOSTIC_ASSIST_USER_PASSWORD`, and set `DIAGNOSTIC_ASSIST_AUTH_SECRET`
-anywhere the tokens matter: the fallback is a literal in a public repository and therefore
-not a secret. Passwords are scrypt-hashed with the standard library and tokens are
-HMAC-signed, so nothing was added to the four runtime dependencies.
+Passwords are scrypt-hashed and tokens HMAC-signed with the standard library, so nothing was
+added to the four runtime dependencies. Set `DIAGNOSTIC_ASSIST_AUTH_SECRET` anywhere the
+tokens matter — the fallback is a literal in the repository and therefore not a secret.
 
 ### The frontend
 
