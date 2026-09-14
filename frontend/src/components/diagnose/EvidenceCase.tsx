@@ -12,6 +12,12 @@
 // labeller concluded first, then the words it quoted to justify that, then the record
 // itself. The evidence spans matter most — they are the only part of a label that can be
 // checked against the text without trusting anything.
+//
+// Every field is read defensively even though the type says it is there. `types/diagnostics`
+// is hand-mirrored from the FastAPI schema rather than generated from it, so the type is a
+// claim about the wire and not a guarantee: a server one deploy behind sends the older,
+// shorter shape, and a page that reads `.length` off a field it has not got dies on a
+// mismatch that ought to be a missing paragraph.
 
 import { Loader } from "@/components/kit/feedback/Loader";
 import { Badge } from "@/components/kit/ui/Badge";
@@ -63,19 +69,25 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant="neutral" label={data.equipment_type} />
-              <Badge variant="neutral" label={data.equipment_family} />
+              {data.equipment_family && (
+                <Badge variant="neutral" label={data.equipment_family} />
+              )}
               <Badge variant="neutral" label={data.language.toUpperCase()} />
-              <Badge
-                variant={STATUS_TONE[data.outcome_status] ?? "neutral"}
-                label={t(data.outcome_status)}
-              />
-              <span className="text-xs text-textLight">
-                {new Date(data.created_at).toLocaleDateString(lang, {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
+              {data.outcome_status && (
+                <Badge
+                  variant={STATUS_TONE[data.outcome_status] ?? "neutral"}
+                  label={t(data.outcome_status)}
+                />
+              )}
+              {data.created_at && (
+                <span className="text-xs text-textLight">
+                  {new Date(data.created_at).toLocaleDateString(lang, {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              )}
             </div>
 
             {data.cause_label && (
@@ -85,12 +97,12 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
               </Field>
             )}
 
-            {data.evidence_spans.length > 0 && (
+            {(data.evidence_spans?.length ?? 0) > 0 && (
               // The only part of a label that can be checked without trusting anything:
               // every span has to occur in the case text or the label was refused.
               <Field label={t("Quoted to justify it")}>
                 <ul className="flex flex-col gap-1.5">
-                  {data.evidence_spans.map((span) => (
+                  {data.evidence_spans!.map((span) => (
                     <li
                       key={span}
                       className="border-l-2 border-accent/50 pl-2.5 text-textLight italic"
@@ -106,18 +118,20 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
               <p>{data.customer_description}</p>
             </Field>
 
-            <Field label={t("What the technician found")}>
-              <p>{data.technician_notes}</p>
-            </Field>
+            {data.technician_notes && (
+              <Field label={t("What the technician found")}>
+                <p>{data.technician_notes}</p>
+              </Field>
+            )}
 
             <Field label={t("How it was resolved")}>
               <p>{data.resolution_text ?? t("Closed with no resolution text.")}</p>
             </Field>
 
             <Field label={t("Parts fitted")}>
-              {data.parts_replaced.length > 0 ? (
+              {(data.parts_replaced?.length ?? 0) > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {data.parts_replaced.map((part) => (
+                  {data.parts_replaced!.map((part) => (
                     <span key={part} className="font-mono text-[11px]">
                       {part}
                     </span>
