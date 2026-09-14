@@ -70,7 +70,7 @@ const STARTERS: { label: string; prompt: string; icon: IconSvgElement }[] = [
 ];
 
 export default function DiagnosePage() {
-  const { t } = useTranslation("common");
+  const { t, lang } = useTranslation("common");
   const { session, pending, error, turns, start, answer, finish, reset } =
     useDiagnosisSession();
 
@@ -91,7 +91,7 @@ export default function DiagnosePage() {
 
   const openEvidence = useCallback((caseId: string) => {
     setOpenCase({ caseId, data: null });
-    getCase(caseId)
+    getCase(caseId, lang)
       .then((data) =>
         // Guarded because the user can tap a second case id before the first resolves.
         setOpenCase((current) =>
@@ -99,7 +99,7 @@ export default function DiagnosePage() {
         ),
       )
       .catch(() => setOpenCase(null));
-  }, []);
+  }, [lang]);
 
   // One path out of the composer for every turn: open the session, answer the question on
   // the table, or add detail to the description and re-rank.

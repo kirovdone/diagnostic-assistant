@@ -110,10 +110,19 @@ export interface LabelRow {
 
 export interface EvidenceCase {
   case_id: string;
+  equipment_family: string;
   equipment_type: string;
+  created_at: string;
   language: string;
   customer_description: string;
+  technician_notes: string;
+  parts_replaced: string[];
   resolution_text: string | null;
+  // What the labeller made of it, and the spans it quoted to justify that.
+  cause_id: string | null;
+  cause_label: string | null;
+  outcome_status: string;
+  evidence_spans: string[];
 }
 
 export type EquipmentCatalogue = Record<string, string[]>;

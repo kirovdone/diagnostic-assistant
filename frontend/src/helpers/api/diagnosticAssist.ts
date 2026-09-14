@@ -139,8 +139,9 @@ export function listCases(): Promise<LabelRow[]> {
   return request<LabelRow[]>("/cases");
 }
 
-export function getCase(caseId: string): Promise<EvidenceCase> {
-  return request<EvidenceCase>(`/cases/${caseId}`);
+export function getCase(caseId: string, language: string): Promise<EvidenceCase> {
+  // The cause name is localised by the server, like every other ranking call.
+  return request<EvidenceCase>(`/cases/${caseId}?language=${encodeURIComponent(language)}`);
 }
 
 // The token rides in the query string because EventSource cannot set a header. The

@@ -54,7 +54,7 @@ from .questions import equipment_question, next_question
 from .ranking import rank
 from .retrieval import CaseIndex
 from .similarity import TextSimilarity, default_similarity
-from .taxonomy import TAXONOMY_VERSION, all_causes, is_known_cause
+from .taxonomy import TAXONOMY_VERSION, all_causes, get_cause, is_known_cause
 
 
 class _Corpus:
@@ -148,13 +148,27 @@ class CloseSessionRequest(BaseModel):
 
 
 class EvidenceCase(BaseModel):
-    """A historical case shown as evidence behind a candidate."""
+    """A historical case shown as evidence behind a candidate.
+
+    Everything the case holds, not a summary of it. Someone who has opened one of these is
+    checking a number against the record behind it, and the fields that settle it are the
+    ones a summary drops: what the technician found, what was actually fitted, and the
+    cause the labeller assigned with the spans it quoted to justify it.
+    """
 
     case_id: str
+    equipment_family: str
     equipment_type: str
+    created_at: datetime
     language: str
     customer_description: str
+    technician_notes: str
+    parts_replaced: list[str]
     resolution_text: str | None
+    cause_id: str | None
+    cause_label: str | None
+    outcome_status: str
+    evidence_spans: list[str]
 
 
 class SessionView(BaseModel):
@@ -582,17 +596,27 @@ def list_cases(user: CurrentUser) -> list[LabelRow]:
 
 
 @app.get("/cases/{case_id}", response_model=EvidenceCase)
-def get_case(case_id: str, user: CurrentUser) -> EvidenceCase:
+def get_case(case_id: str, user: CurrentUser, language: str = "en") -> EvidenceCase:
     """One historical case, for when the user taps an evidence case id."""
     case = corpus().case_by_id.get(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="case not found")
+    label = corpus().labels.get(case_id)
+    cause = get_cause(label.cause_id) if label and label.cause_id else None
     return EvidenceCase(
         case_id=case.case_id,
+        equipment_family=case.equipment_family,
         equipment_type=case.equipment_type,
+        created_at=case.created_at,
         language=case.language,
         customer_description=case.customer_description,
+        technician_notes=case.technician_notes,
+        parts_replaced=list(case.parts_replaced),
         resolution_text=case.resolution_text,
+        cause_id=label.cause_id if label else None,
+        cause_label=cause.label(language) if cause else None,
+        outcome_status=label.outcome_status.value if label else "UNKNOWN",
+        evidence_spans=list(label.evidence_spans) if label else [],
     )
 
 

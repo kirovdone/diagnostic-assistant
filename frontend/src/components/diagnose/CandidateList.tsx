@@ -118,7 +118,7 @@ export function CandidateList({
                         variant="none"
                         label={caseId}
                         onClick={() => onEvidenceClick(caseId)}
-                        className="h-auto px-0 font-mono text-[11px] text-accent underline underline-offset-2 hover:opacity-70"
+                        className="h-auto px-0 font-mono text-[11px] text-accent hover:underline hover:underline-offset-2"
                       />
                     ))}
                   </div>
