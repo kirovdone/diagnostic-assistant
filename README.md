@@ -8,7 +8,8 @@ This README is the submission, in the order the brief asks for it. Every result 
 output from running the code, each with a script under `backend/scripts/` that reproduces
 it; anything projected to a hundred thousand cases and beyond is labelled as a projection.
 
-Full-size diagrams are in [`diagrams/`](diagrams/) as SVG and 2400px PNG.
+Full-size diagrams are in [`diagrams/`](diagrams/) as SVG and 2400px PNG, and
+[`screenshots/`](screenshots/) holds the interface frames below.
 
 ---
 
@@ -71,6 +72,37 @@ taxonomy is missing. First thing I would add to the UI.
 The `Language model` lane is dashed because none of it runs yet: reading features off free
 text is the one model call site that is designed and not built. The embedding model beside
 it is real.
+
+### The interface, running
+
+**Asking.** One composer, one row until the text needs more. The four starters are the four
+ways in: shorthand naming a part, German naming a part, French naming a part, and a
+description that names nothing at all — the one that makes the system ask rather than guess.
+
+![The empty state](screenshots/1-ask.png)
+
+**The ranking arrives in the answer, not in a sidebar.** The sentence above it says the
+evidence is thin and why — three cases across the family rather than this exact model —
+before any number is read. **Something else, 50%** is the reserved mass, and it is a row like
+the others rather than a footnote.
+
+![The ranking](screenshots/2-ranking.png)
+
+**Opening a row gives the part a van would load, the taxonomy id, and the closed cases the
+share came from.** The share is a background fill rather than a chart, so the number stays
+the thing being read.
+
+![An expanded row](screenshots/3-why.png)
+
+**Every case id is a link to the closed case behind it.** The probability is a number nobody
+can check; the case is checkable in seconds. That is the cheapest explanation the product has.
+
+![A closed case](screenshots/4-evidence.png)
+
+**The confirmation is the label.** It is recorded against the session and goes back into the
+corpus as the next ranking's evidence — the loop the whole system is built around.
+
+![Confirmed](screenshots/5-recorded.png)
 
 ---
 

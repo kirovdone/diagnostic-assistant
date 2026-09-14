@@ -25,7 +25,7 @@ import type { DiagnosisEvent, SessionView } from "@/types/diagnostics";
 // What the assistant says when it has nothing left worth asking. The server decides that,
 // not the screen: it stops when no question clears MIN_INFORMATION_GAIN_BITS.
 const REVIEW_PROMPT =
-  "That is everything worth asking. The likely causes are on the right — confirm which one it was.";
+  "That is everything worth asking. Here is what the corpus says — confirm which one it turned out to be.";
 
 interface StartInput {
   description: string;

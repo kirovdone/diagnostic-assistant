@@ -125,24 +125,31 @@ export function EvidenceCase({ caseId, data, onClose }: EvidenceCaseProps) {
             )}
 
             <Field label={t("How it was resolved")}>
-              <p>{data.resolution_text ?? t("Closed with no resolution text.")}</p>
+              <p>{data.resolution_text || t("Closed with no resolution text.")}</p>
             </Field>
 
-            <Field label={t("Parts fitted")}>
-              {(data.parts_replaced?.length ?? 0) > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {data.parts_replaced!.map((part) => (
-                    <span key={part} className="font-mono text-[11px]">
-                      {part}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                // Worth stating rather than leaving blank: a cleaning job is a dispatch
-                // decision too, and a cause with no part is the one a van cannot prepare for.
-                <p className="text-textLight">{t("None — nothing was replaced")}</p>
-              )}
-            </Field>
+            {/* A field the server did not send is not the same fact as a field it sent
+                empty, and only the second one means no part was fitted. Rendering the
+                absent case as "nothing was replaced" states something about the job that
+                nobody recorded — next to a resolution reading "replaced cylinder seal kit"
+                it reads as a contradiction in the data rather than a gap in the response. */}
+            {data.parts_replaced && (
+              <Field label={t("Parts fitted")}>
+                {data.parts_replaced.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {data.parts_replaced.map((part) => (
+                      <span key={part} className="font-mono text-[11px]">
+                        {part}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  // Worth stating rather than leaving blank: a cleaning job is a dispatch
+                  // decision too, and a cause with no part is the one a van cannot prepare for.
+                  <p className="text-textLight">{t("None — nothing was replaced")}</p>
+                )}
+              </Field>
+            )}
           </div>
         )}
       </SheetContent>
