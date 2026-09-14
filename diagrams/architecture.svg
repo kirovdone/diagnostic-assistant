@@ -34,7 +34,7 @@
 <rect x="275" y="84" width="230" height="86" rx="6" fill="#ffffff" stroke="#c3ced6" stroke-width="1.6"/>
 <text class="t" x="288" y="106" fill="#131a20">Normalise + screen</text>
 <text class="s" x="288" y="124">codes, negation, shorthand</text>
-<text class="s" x="288" y="139">14% never reach a model</text>
+<text class="s" x="288" y="139">3 of 22 never reach a model</text>
 <rect x="520" y="84" width="230" height="86" rx="6" fill="#f0e9f8" stroke="#6b3fa0" stroke-width="1.6"/>
 <text x="533" y="101" font-size="9.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#6b3fa0" letter-spacing=".09em">BEDROCK</text>
 <text class="t" x="533" y="120" fill="#6b3fa0">Extract a cause</text>
@@ -42,7 +42,7 @@
 <text class="s" x="533" y="153">19/19 measured</text>
 <rect x="765" y="84" width="230" height="86" rx="6" fill="#ffffff" stroke="#c3ced6" stroke-width="1.6"/>
 <text class="t" x="778" y="106" fill="#131a20">Validate + weigh</text>
-<text class="s" x="778" y="124">4 checks, never repair</text>
+<text class="s" x="778" y="124">5 checks, never repair</text>
 <text class="s" x="778" y="139">weight from status</text>
 <rect x="1010" y="84" width="230" height="86" rx="6" fill="#f0e9f8" stroke="#6b3fa0" stroke-width="1.6"/>
 <text x="1023" y="101" font-size="9.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#6b3fa0" letter-spacing=".09em">BEDROCK</text>
@@ -98,7 +98,7 @@
 <path d="M1125 356 V306" stroke="#1a7a4c" stroke-width="1.8" fill="none" marker-end="url(#hok)"/>
 <text class="m" x="1136" y="336" fill="#1a7a4c">write outcome</text>
 <path d="M30 470 V482 H995 V470" stroke="#1a7a4c" stroke-width="1.8" fill="none"/>
-<text x="512" y="502" text-anchor="middle" font-size="12.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#1a7a4c">3 s p95 to first candidates — measured 60 ms over 100k documents</text>
+<text x="512" y="502" text-anchor="middle" font-size="12.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#1a7a4c">3 s p95 to first candidates — a design target, not a measurement</text>
 <path d="M1255 442 V566 H18 V150" stroke="#c3ced6" stroke-width="1.5" fill="none" stroke-dasharray="6 5" marker-end="url(#ha)"/>
 <text class="s" x="660" y="560" text-anchor="middle">the confirmed cause becomes tomorrow’s closed case, and the calibration set</text>
 <text class="m" x="30" y="620" fill="#5a6773">Every expensive step is offline. The live band is one retrieval and arithmetic, which is what makes the budget achievable.</text>

@@ -109,10 +109,14 @@ evaluation across every model the account can invoke:
 
 | model, `eu-central-1` | $/M in | $/M out | cause | non-English | per run |
 |---|---|---|---|---|---|
-| `eu.amazon.nova-micro-v1:0` | 0.046 | 0.184 | 18/19 | 4/4 | $0.0008 |
-| **`eu.amazon.nova-lite-v1:0`** | **0.078** | **0.312** | **19/19** | **4/4** | **$0.0013** |
-| `eu.amazon.nova-2-lite-v1:0` | 0.429 | 3.597 | 15/19 | 4/4 | $0.0111 |
-| `eu.amazon.nova-pro-v1:0` | 1.05 | 2.10 | 19/19 | 4/4 | $0.0134 |
+| `eu.amazon.nova-micro-v1:0` | 0.046 | 0.184 | 18/19 | 4/4 | $0.0013 |
+| **`eu.amazon.nova-lite-v1:0`** | **0.078** | **0.312** | **19/19** | **4/4** | **$0.0022** |
+| `eu.amazon.nova-2-lite-v1:0` | 0.429 | 3.597 | 15/19 | 4/4 | $0.0189 |
+| `eu.amazon.nova-pro-v1:0` | 1.05 | 2.10 | 19/19 | 4/4 | $0.0265 |
+
+One run of `scripts/compare_models.py`, committed verbatim as `scripts/model_sweep.txt`. The
+cost column is Bedrock's own `usage` counters, not an estimate from character counts, which is
+what it used to be and which was out by roughly half.
 
 The cheapest model that scored full marks was taken. The column that decided it is
 **non-English**: a model that reads English notes perfectly and German ones poorly is the
@@ -120,9 +124,10 @@ failure this corpus hides best, because only four of twenty-two are not English.
 come from the AWS pricing API for this region and are exact.
 
 The Nova 2 Lite row is why the sweep exists rather than a paragraph of reasoning. It is the
-newer model and the obvious upgrade, and it scores **15/19 at 8.5× the price** — reproduced on
-a second run, temperature 0. Assuming it would be better would have cost accuracy and money at
-the same time.
+newer model and the obvious upgrade, and it scores **15/19 at 8.6× the price**. Assuming it
+would be better would have cost accuracy and money at the same time. It is also the least
+stable of the four: an earlier run put it at 14/19, so treat the gap as real and its size as
+approximate.
 
 **Embeddings: Cohere Embed v4**, 1024 dimensions, not Amazon Titan V2. Titan is five times
 cheaper and optimised for English, which reintroduces exactly the failure the embedding exists
@@ -142,8 +147,8 @@ already scores full marks.
 
 | | |
 |---|---|
-| one full evaluation run | **$0.0013** |
-| the whole model comparison sweep | under $0.02 |
+| one full evaluation run | **$0.0022** |
+| the whole model comparison sweep | under $0.05 |
 | embedding all 22 cases | $0.00003 |
 | standing cost while idle | **$0** |
 
@@ -162,7 +167,7 @@ real volume, batch inference (`CreateModelInvocationJob`) is roughly half the on
 The test suite needs neither credentials nor network:
 
 ```bash
-uv run pytest        # 226 tests; tests/stubs.py supplies the extractor
+uv run pytest        # 257 tests; tests/stubs.py supplies the extractor
 ```
 
 Neither model call falls back. The suite injects its own doubles — `StubExtractor` and

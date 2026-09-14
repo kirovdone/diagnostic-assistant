@@ -1,6 +1,6 @@
 # Diagrams
 
-Three views, each as a standalone SVG and a 2000px PNG. The SVGs are self-contained — their
+Three views, each as a standalone SVG and a 2400px PNG. The SVGs are self-contained — their
 own `<style>`, literal colours, no CSS variables, no web fonts, no external references — so
 they drop straight into slides and render the same outside this repository.
 
