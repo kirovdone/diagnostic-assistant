@@ -5,7 +5,8 @@
 //
 // Dense by default, because the first read happens while someone is on the phone: the
 // cause, the number, and whether it needs a part, which is the only thing that turns a
-// cause into a van load. What explains the number — the cause id, how many cases voted,
+// cause into a van load. The case ids read as links rather than buttons, because that is
+// what they behave like: each one opens the closed case it names. What explains the number — the cause id, how many cases voted,
 // which ones — is behind the accordion, because a dispatcher deciding what to load is not
 // auditing the ranking and the person auditing it is not in a hurry.
 //
@@ -113,11 +114,11 @@ export function CandidateList({
                     {candidate.evidence_case_ids.map((caseId) => (
                       <Button
                         key={caseId}
-                        size="small"
-                        variant="solid"
+                        size="xsmall"
+                        variant="none"
                         label={caseId}
                         onClick={() => onEvidenceClick(caseId)}
-                        className="font-mono"
+                        className="h-auto px-0 font-mono text-[11px] text-accent underline underline-offset-2 hover:opacity-70"
                       />
                     ))}
                   </div>
