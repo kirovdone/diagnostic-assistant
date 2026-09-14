@@ -1,0 +1,467 @@
+/* Origin: the in-house design system, src/app/globals.css. Copied unchanged.
+   The theme tokens, the surface ladder and the dark-mode palette all come from here, so
+   anything written against them looks native without a second design pass. */
+@import "tailwindcss";
+
+/* ─── Theme tokens ──────────────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-accent: var(--twc-accent);
+  --color-destructive: var(--twc-destructive);
+  --color-borderLight: var(--twc-borderLight);
+  --color-borderDark: var(--twc-borderDark);
+  --color-background: var(--twc-background);
+  --color-backgroundLight: var(--twc-backgroundLight);
+  --color-backgroundDark: var(--twc-backgroundDark);
+  --color-text: var(--twc-text);
+  --color-textLight: var(--twc-textLight);
+  --color-textDark: var(--twc-textDark);
+
+  /* Tailwind v4 resolves the font-{sans,serif,mono} utilities from these keys. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* Headings run on the sans; this is only here for generated-site previews. */
+  --font-serif: Georgia, "Times New Roman", ui-serif, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --transition-property-width: width;
+  --transition-property-height: height;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-in;
+
+  /* ── Marketing motion ──────────────────────────────────────────────────
+     One easing and one distance across the whole landing page, so a section
+     revealing and a chart drawing feel like the same hand. Everything here is
+     disabled under prefers-reduced-motion, at the bottom of this file. */
+  --ease-rise: cubic-bezier(0.22, 0.75, 0.2, 1);
+  --animate-rise: rise 0.62s var(--ease-rise) both;
+  --animate-blink: blink 1.1s step-end infinite;
+  /* The pause between sending and the first step arriving, where the turn is
+     alive but has nothing to show yet. */
+  --animate-thinking: thinking 1.25s var(--ease-rise) infinite;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  @keyframes thinking {
+    0%,
+    70%,
+    100% {
+      opacity: 0.25;
+      transform: translateY(0);
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+}
+
+@keyframes spinning {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(
+        var(--tw-enter-translate-x, 0),
+        var(--tw-enter-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--tw-enter-scale, 1),
+        var(--tw-enter-scale, 1),
+        var(--tw-enter-scale, 1)
+      )
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(
+        var(--tw-exit-translate-x, 0),
+        var(--tw-exit-translate-y, 0),
+        0
+      )
+      scale3d(
+        var(--tw-exit-scale, 1),
+        var(--tw-exit-scale, 1),
+        var(--tw-exit-scale, 1)
+      )
+      rotate(var(--tw-exit-rotate, 0));
+  }
+}
+
+@utility scrollbar-app {
+  scrollbar-width: thin;
+  scrollbar-color: var(--twc-borderLight) transparent;
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--twc-borderLight);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+    transition: background 200ms ease;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--twc-borderDark);
+    background-clip: content-box;
+  }
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/**
+ * The fill of a loading placeholder.
+ *
+ * Mixed from the ink so it moves AWAY from the page in both themes — darker on
+ * paper, lighter on ink. The surface ladder cannot do this: backgroundLight
+ * rises in both, so a skeleton drawn with it sat at 1.07 contrast on the light
+ * theme, lighter than the page it was on, and read as blank white. This runs
+ * 1.27 on light and 1.40 on dark.
+ *
+ * The background is named first even though the ink is what does the work:
+ * Tailwind derives its own no-`color-mix` fallback from the first variable it
+ * sees, so written the other way round it paints solid near-black bars on a
+ * browser too old to mix. This way that fallback is the page itself — no
+ * shading rather than a black block.
+ */
+@utility bg-skeleton {
+  background-color: color-mix(
+    in srgb,
+    var(--twc-background) 88%,
+    var(--twc-text)
+  );
+}
+
+@utility animate-in {
+  animation-name: enter;
+  animation-duration: 150ms;
+  --tw-enter-opacity: initial;
+  --tw-enter-scale: initial;
+  --tw-enter-rotate: initial;
+  --tw-enter-translate-x: initial;
+  --tw-enter-translate-y: initial;
+}
+@utility animate-out {
+  animation-name: exit;
+  animation-duration: 150ms;
+  --tw-exit-opacity: initial;
+  --tw-exit-scale: initial;
+  --tw-exit-rotate: initial;
+  --tw-exit-translate-x: initial;
+  --tw-exit-translate-y: initial;
+}
+@utility fade-in-0 {
+  --tw-enter-opacity: 0;
+}
+@utility fade-out-0 {
+  --tw-exit-opacity: 0;
+}
+@utility zoom-in-95 {
+  --tw-enter-scale: 0.95;
+}
+@utility zoom-out-95 {
+  --tw-exit-scale: 0.95;
+}
+@utility slide-in-from-top-2 {
+  --tw-enter-translate-y: -0.5rem;
+}
+@utility slide-in-from-bottom-2 {
+  --tw-enter-translate-y: 0.5rem;
+}
+@utility slide-in-from-left-2 {
+  --tw-enter-translate-x: -0.5rem;
+}
+@utility slide-in-from-right-2 {
+  --tw-enter-translate-x: 0.5rem;
+}
+@utility slide-in-from-top {
+  --tw-enter-translate-y: -100%;
+}
+@utility slide-in-from-bottom {
+  --tw-enter-translate-y: 100%;
+}
+@utility slide-in-from-left {
+  --tw-enter-translate-x: -100%;
+}
+@utility slide-in-from-right {
+  --tw-enter-translate-x: 100%;
+}
+@utility slide-out-to-top {
+  --tw-exit-translate-y: -100%;
+}
+@utility slide-out-to-bottom {
+  --tw-exit-translate-y: 100%;
+}
+@utility slide-out-to-left {
+  --tw-exit-translate-x: -100%;
+}
+@utility slide-out-to-right {
+  --tw-exit-translate-x: 100%;
+}
+
+/* ─── Theme variants ─────────────────────────────────────────────────────────
+   The one palette. `neutralThemeColors()` in src/editor/helpers/styles/styleTheme.ts
+   mirrors these values for generated sites, which resolve colours in JS.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --twc-primary: #18181b;
+  --twc-onPrimary: #ffffff;
+  --twc-accent: #18181b;
+  --twc-accentText: #18181b;
+  --twc-onAccent: #ffffff;
+  --twc-destructive: #dc2626;
+  --twc-borderLight: #f2f2f4;
+  --twc-borderDark: #ededf0;
+  --twc-background: #fafafa;
+  --twc-backgroundLight: #f4f4f5;
+  --twc-backgroundDark: #ffffff;
+  --twc-text: #18181b;
+  --twc-textLight: #52525b;
+  --twc-textDark: #ffffff;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --twc-primary: #fafafa;
+  --twc-onPrimary: #18181b;
+  --twc-accent: #fafafa;
+  --twc-accentText: #fafafa;
+  --twc-onAccent: #18181b;
+  --twc-destructive: #f87171;
+  --twc-borderLight: #2b2b30;
+  --twc-borderDark: #35353b;
+  --twc-background: #18181b;
+  --twc-backgroundLight: #27272a;
+  --twc-backgroundDark: #2e2e33;
+  --twc-text: #fafafa;
+  --twc-textLight: #a1a1aa;
+  --twc-textDark: #18181b;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    color-scheme: dark;
+    --twc-primary: #fafafa;
+    --twc-onPrimary: #18181b;
+    --twc-accent: #fafafa;
+    --twc-accentText: #fafafa;
+    --twc-onAccent: #18181b;
+    --twc-destructive: #f87171;
+    --twc-borderLight: #2b2b30;
+    --twc-borderDark: #35353b;
+    --twc-background: #18181b;
+    --twc-backgroundLight: #27272a;
+    --twc-backgroundDark: #2e2e33;
+    --twc-text: #fafafa;
+    --twc-textLight: #a1a1aa;
+    --twc-textDark: #18181b;
+  }
+}
+
+/* ─── Global styles ──────────────────────────────────────────────────────────*/
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+svg.lucide {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+p,
+span {
+  a {
+    text-decoration: underline;
+    cursor: pointer;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.rotating-element {
+  animation-name: spinning;
+  animation-duration: 2000ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+
+textarea {
+  margin-bottom: -6px;
+}
+
+body.editor-resizing [data-selectable] {
+  pointer-events: none !important;
+}
+
+/* ─── Scroll reveal ──────────────────────────────────────────────────────────
+   Every direct child of a reveal group plays in, in document order, once the
+   group enters the viewport. */
+[data-reveal-all] > * {
+  opacity: 0;
+}
+[data-reveal-all="shown"] > * {
+  animation: var(--animate-rise);
+}
+[data-reveal-all="shown"] > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+[data-reveal-all="shown"] > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+[data-reveal-all="shown"] > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+[data-reveal-all="shown"] > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+[data-reveal-all="shown"] > *:nth-child(5) {
+  animation-delay: 240ms;
+}
+[data-reveal-all="shown"] > *:nth-child(6) {
+  animation-delay: 300ms;
+}
+[data-reveal-all="shown"] > *:nth-child(n + 7) {
+  animation-delay: 360ms;
+}
+
+/* Motion is decoration here: without it the page still reads, so anyone who
+   asks for less gets the finished state immediately. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal-all] > *,
+  [data-reveal-all="shown"] > * {
+    opacity: 1;
+    animation: none !important;
+  }
+  [class*="animate-"] {
+    animation: none !important;
+  }
+}
+
+.pk-plain-link,
+.pk-plain-link:hover {
+  text-decoration: none;
+}
+.pk-fill-children > * {
+  height: 100%;
+}
+.pk-hover-fade {
+  transition: opacity 200ms;
+}
+.pk-hover-fade:hover {
+  opacity: 0.8;
+}
+.pk-fill-width {
+  width: 100%;
+}
+.pk-fill {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.pk-last-row:last-child > td,
+.pk-last-row:last-child > th {
+  border-bottom-width: 0;
+}
+.pk-stack > * + * {
+  margin-top: 0.5rem;
+}
+.pk-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pk-total-row {
+  font-weight: 600;
+}
+
+.pk-list-icon {
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+.pk-no-shrink {
+  flex-shrink: 0;
+}
+.pk-accordion-chevron {
+  transition-property: transform, translate, scale, rotate;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+.pk-accordion-trigger[data-state="open"] .pk-accordion-chevron {
+  rotate: 90deg;
+}
+.pk-accordion-content[data-state="open"] {
+  animation: accordion-down 0.2s ease-out;
+}
+.pk-accordion-content[data-state="closed"] {
+  animation: accordion-up 0.2s ease-in;
+}
+.pk-nav-bar {
+  display: flex;
+}
+@container pk-canvas (min-width: 64rem) {
+  .pk-nav-bar {
+    display: none;
+  }
+}
+.pk-nav-sheet-title a {
+  text-decoration-line: none !important;
+}
+:where(.pk-button-stack > :not(:last-child)) {
+  margin-block-start: 0;
+  margin-block-end: 0.5rem;
+}
+.pk-auto-width {
+  width: auto;
+  flex-shrink: 0;
+}

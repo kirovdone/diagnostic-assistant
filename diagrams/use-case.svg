@@ -1,0 +1,88 @@
+<svg viewBox="0 0 1180 812" xmlns="http://www.w3.org/2000/svg" font-family='"IBM Plex Sans",Helvetica,Arial,sans-serif' role="img" aria-label="Use case diagram. Three human actors — dispatcher, technician and service engineer — interact with Diagnostic Assist. The dispatcher describes a fault and answers questions; the technician confirms what the cause actually was; the service engineer reviews labels that failed validation and approves the taxonomy. Two AWS services support the system: Bedrock for extraction and embeddings, OpenSearch for retrieval.">
+<style>
+ .ttl{fill:#131a20;font-size:16px;font-weight:700}
+ .lane{fill:#5a6773;font-size:11.5px;font-family:"IBM Plex Mono",Menlo,Consolas,monospace;letter-spacing:.11em}
+ .t{fill:#131a20;font-size:14px;font-weight:600}
+ .s{fill:#5a6773;font-size:12px}
+ .m{fill:#5a6773;font-size:11px;font-family:"IBM Plex Mono",Menlo,Consolas,monospace}
+ .lbl{fill:#131a20;font-size:12.5px}
+ .ln{stroke:#c3ced6;stroke-width:1.6;fill:none}
+ .lnd{stroke:#c3ced6;stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+</style>
+<rect width="1180" height="812" fill="#ffffff"/>
+<marker id="ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#c3ced6"/></marker>
+<marker id="hacc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#0d6a73"/></marker>
+<marker id="hai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#6b3fa0"/></marker>
+<marker id="haws" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#b8690f"/></marker>
+<marker id="hok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#1a7a4c"/></marker>
+<marker id="hact" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,1 10,5 0,9" fill="#2a4d8f"/></marker>
+<text class="ttl" x="30" y="34">Who uses it, and for what</text>
+<rect x="300" y="60" width="560" height="660" rx="10" fill="#eef2f4" stroke="#c3ced6" stroke-width="1.6" stroke-dasharray="8 5" opacity=".6"/>
+<text class="lane" x="320" y="84">DIAGNOSTIC ASSIST</text>
+<text class="lane" x="320" y="116" fill="#0d6a73">LIVE</text>
+<ellipse cx="580" cy="200" rx="168" ry="33" fill="#e0eff0" stroke="#0d6a73" stroke-width="1.6"/>
+<text x="580" y="195" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Describe the fault</text>
+<text x="580" y="213" text-anchor="middle" class="s">one box, any language</text>
+<ellipse cx="580" cy="278" rx="168" ry="33" fill="#e0eff0" stroke="#0d6a73" stroke-width="1.6"/>
+<text x="580" y="273" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Identify the machine</text>
+<text x="580" y="291" text-anchor="middle" class="s">read from text, else ask</text>
+<ellipse cx="580" cy="356" rx="168" ry="33" fill="#e0eff0" stroke="#0d6a73" stroke-width="1.6"/>
+<text x="580" y="351" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Answer one question</text>
+<text x="580" y="369" text-anchor="middle" class="s">chosen by information gain</text>
+<ellipse cx="580" cy="434" rx="168" ry="33" fill="#e0eff0" stroke="#0d6a73" stroke-width="1.6"/>
+<text x="580" y="429" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">See ranked causes</text>
+<text x="580" y="447" text-anchor="middle" class="s">with a share for “not ours”</text>
+<ellipse cx="580" cy="512" rx="168" ry="33" fill="#e3f2ea" stroke="#1a7a4c" stroke-width="1.6"/>
+<text x="580" y="507" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Confirm what it was</text>
+<text x="580" y="525" text-anchor="middle" class="s">the only ground truth</text>
+<text class="lane" x="320" y="574" fill="#5a6773">OFFLINE</text>
+<ellipse cx="580" cy="612" rx="168" ry="30" fill="#f0e9f8" stroke="#6b3fa0" stroke-width="1.6"/>
+<text x="580" y="607" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Label closed cases</text>
+<text x="580" y="625" text-anchor="middle" class="s">automatic; engineer owns the taxonomy</text>
+<ellipse cx="580" cy="684" rx="168" ry="30" fill="#f7e9e6" stroke="#a8402f" stroke-width="1.6"/>
+<text x="580" y="679" text-anchor="middle" font-size="13px" font-weight="600" fill="#131a20">Review what failed</text>
+<text x="580" y="697" text-anchor="middle" class="s">the UNMAPPED queue</text>
+<circle cx="130" cy="150" r="11" fill="#e6edf8" stroke="#2a4d8f" stroke-width="1.8"/>
+<path d="M130 161 V184 M117 170 H143 M130 184 L119 200 M130 184 L141 200" stroke="#2a4d8f" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+<text x="130" y="218" text-anchor="middle" font-size="13.5px" font-weight="600" fill="#2a4d8f">Dispatcher</text>
+<text x="130" y="234" text-anchor="middle" class="s">on the phone with a customer,</text>
+<text x="130" y="248" text-anchor="middle" class="s">deciding the van load</text>
+<circle cx="130" cy="430" r="11" fill="#e6edf8" stroke="#2a4d8f" stroke-width="1.8"/>
+<path d="M130 441 V464 M117 450 H143 M130 464 L119 480 M130 464 L141 480" stroke="#2a4d8f" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+<text x="130" y="498" text-anchor="middle" font-size="13.5px" font-weight="600" fill="#2a4d8f">Technician</text>
+<text x="130" y="514" text-anchor="middle" class="s">at the machine,</text>
+<text x="130" y="528" text-anchor="middle" class="s">records what it was</text>
+<circle cx="130" cy="640" r="11" fill="#e6edf8" stroke="#2a4d8f" stroke-width="1.8"/>
+<path d="M130 651 V674 M117 660 H143 M130 674 L119 690 M130 674 L141 690" stroke="#2a4d8f" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+<text x="130" y="708" text-anchor="middle" font-size="13.5px" font-weight="600" fill="#2a4d8f">Service engineer</text>
+<text x="130" y="724" text-anchor="middle" class="s">owns the taxonomy</text>
+<text x="130" y="738" text-anchor="middle" class="s">and the review queue</text>
+<path d="M148 170 C 250 170, 330 200, 410 200" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 170 C 250 170, 330 278, 410 278" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 170 C 250 170, 330 356, 410 356" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 170 C 250 170, 330 434, 410 434" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 450 C 250 450, 330 434, 410 434" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 450 C 250 450, 330 512, 410 512" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 660 C 250 660, 330 612, 410 612" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<path d="M148 660 C 250 660, 330 684, 410 684" fill="none" stroke="#2a4d8f" stroke-width="1.6" opacity=".75" marker-end="url(#hact)"/>
+<text class="lane" x="905" y="116" fill="#b8690f">AWS, eu-central-1</text>
+<rect x="900" y="140" width="250" height="78" rx="6" fill="#fdf0e0" stroke="#b8690f" stroke-width="1.6"/>
+<text x="913" y="157" font-size="9.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#b8690f" letter-spacing=".09em">MANAGED &#183; RUNNING</text>
+<text class="t" x="913" y="176" fill="#b8690f">Bedrock</text>
+<text class="s" x="913" y="194">Nova Lite — extraction</text>
+<text class="s" x="913" y="209">Cohere Embed v4 — vectors</text>
+<rect x="900" y="240" width="250" height="78" rx="6" fill="#fdf0e0" stroke="#b8690f" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="913" y="257" font-size="9.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#b8690f" letter-spacing=".09em">MANAGED &#183; DESIGNED</text>
+<text class="t" x="913" y="276" fill="#b8690f">OpenSearch</text>
+<text class="s" x="913" y="294">kNN + BM25, one query</text>
+<text class="s" x="913" y="309">filtered by equipment type</text>
+<rect x="900" y="340" width="250" height="78" rx="6" fill="#fdf0e0" stroke="#b8690f" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="913" y="357" font-size="9.5px" font-family='"IBM Plex Mono",Menlo,Consolas,monospace' fill="#b8690f" letter-spacing=".09em">MANAGED &#183; DESIGNED</text>
+<text class="t" x="913" y="376" fill="#b8690f">DynamoDB</text>
+<text class="s" x="913" y="394">sessions, 8h TTL</text>
+<text class="s" x="913" y="409">outcomes, never expire</text>
+<path d="M896 179 C 820 179, 800 612, 750 612" fill="none" stroke="#b8690f" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8" marker-end="url(#haws)"/>
+<path d="M896 279 C 820 279, 800 434, 750 434" fill="none" stroke="#b8690f" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8" marker-end="url(#haws)"/>
+<path d="M896 379 C 820 379, 800 512, 750 512" fill="none" stroke="#b8690f" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8" marker-end="url(#haws)"/>
+<text class="m" x="30" y="794" fill="#5a6773">One screen serves the dispatcher and the technician. The service engineer never sees a diagnosis — they own what the system is allowed to believe.   Dashed = designed, not built.</text>
+</svg>

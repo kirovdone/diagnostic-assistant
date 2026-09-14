@@ -1,0 +1,54 @@
+[project]
+name = "diagnostic-assist"
+version = "0.1.0"
+description = "Root-cause labelling and diagnosis assistance for field service cases"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.9",
+    "sse-starlette>=2.1",
+    "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+bedrock = [
+    "boto3>=1.35",
+    "botocore[crt]>=1.35",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "scikit-learn>=1.5",   # tests/stubs.py only; the package does not import it
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["diagnostic_assist"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["diagnostic_assist"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["sklearn.*", "sse_starlette.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true

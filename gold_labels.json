@@ -1,0 +1,28 @@
+{
+  "taxonomy_version": "2026-09-seed",
+  "note": "Hand-written ground truth for the 22 sample cases, read off technician_notes and resolution_text only. Written to be argued with: the `why` field on the awkward cases is the claim, and a reviewer who disagrees with one should change this file rather than the code. In production this file is the output of a service engineer labelling a stratified sample of a few hundred cases, and it is regenerated whenever the taxonomy version changes.",
+  "labels": [
+    { "case_id": "C-48211", "outcome_status": "CONFIRMED", "cause_id": "CX.ELEC.CONTACTOR_FAILED" },
+    { "case_id": "C-48377", "outcome_status": "CONFIRMED", "cause_id": "CX.ELEC.CONTACTOR_FAILED", "why": "German wording of C-48211. Same cause id or the corpus splits by language." },
+    { "case_id": "C-48590", "outcome_status": "CONFIRMED", "cause_id": "CX.ELEC.GROUND_STRAP_LOOSE", "why": "Fixed with a torque wrench and no part. parts_replaced is empty and the case is fully diagnosed." },
+    { "case_id": "C-48604", "outcome_status": "CONFIRMED", "cause_id": "AP.HYD.BOOM_CYL_ROD_SEAL" },
+    { "case_id": "C-48712", "outcome_status": "CONFIRMED", "cause_id": "CH.DRAIN.CONDENSATE_BLOCKED", "why": "Customer said oil, technician found condensate. The cause is the technician's; the customer's wording is a mismatch flag, not a second opinion." },
+    { "case_id": "C-48755", "outcome_status": "CONFIRMED", "cause_id": "AP.HYD.BOOM_CYL_SCORED", "why": "Continuous leak under load with a scored bore. Same component as C-48604, different cause, different part." },
+    { "case_id": "C-48801", "outcome_status": "PROVISIONAL", "cause_id": "AP.HYD.BOOM_CYL_ROD_SEAL", "why": "Sealant, kit on order, resolution_text null. The diagnosis is probably right and was never verified." },
+    { "case_id": "C-48899", "outcome_status": "CONFIRMED", "cause_id": "CX.MECH.VALVE_PLATE_WORN" },
+    { "case_id": "C-48934", "outcome_status": "CONFIRMED", "cause_id": "CX.COOL.INTAKE_BLOCKED", "why": "Screen cleaned, no part. Also the corpus's clearest example of an explicit absence of error codes." },
+    { "case_id": "C-49002", "outcome_status": "CONFIRMED", "cause_id": "CX.ELEC.ALTERNATOR_NOT_CHARGING", "why": "The symptom is a flat battery and the cause is the alternator. The obvious label is the wrong one." },
+    { "case_id": "C-49040", "outcome_status": "CONFIRMED", "cause_id": "CX.ELEC.BATTERY_FAILED", "why": "Nearly the same symptom as C-49002 with the opposite cause. The pair is the argument for asking about charging voltage." },
+    { "case_id": "C-49118", "outcome_status": "NON_TECHNICAL", "cause_id": null, "why": "Invoice dispute. No machine involved." },
+    { "case_id": "C-49203", "outcome_status": "NON_DIAGNOSTIC", "cause_id": null, "why": "Whole unit swapped under warranty, never stripped. parts_replaced lists UNIT-CX450 and the case still has no root cause." },
+    { "case_id": "C-49266", "outcome_status": "CONFIRMED", "cause_id": "CX.MECH.VALVE_PLATE_WORN", "why": "Italian wording of C-48899, including E207 written without the hyphen." },
+    { "case_id": "C-49301", "outcome_status": "NO_FAULT_FOUND", "cause_id": null, "why": "Intermittent cold-start fault that did not reproduce. The fault is real; this visit found nothing." },
+    { "case_id": "C-49355", "outcome_status": "CONFIRMED", "cause_id": "CH.REFRIG.LEAK_SCHRADER" },
+    { "case_id": "C-49402", "outcome_status": "CONFIRMED", "cause_id": "CX.MECH.CONROD_BEARING_WORN" },
+    { "case_id": "C-49437", "outcome_status": "CONFIRMED", "cause_id": "CX.MECH.REED_VALVE_BROKEN", "why": "Knocking like C-49402 but the cause is a broken reed, not a bearing. Also the only CX-300 in the corpus, so retrieval has to back off to the family." },
+    { "case_id": "C-49480", "outcome_status": "CONFIRMED", "cause_id": "CX.MECH.CONROD_BEARING_WORN", "why": "German wording of C-49402." },
+    { "case_id": "C-49511", "outcome_status": "CONFIRMED", "cause_id": "CH.WATER.PUMP_SEAL_FAILED" },
+    { "case_id": "C-49544", "outcome_status": "CONFIRMED", "cause_id": "CH.WATER.FITTING_CORRODED", "why": "Cold side, slow drip, corroded fitting. C-49511 is hot side, spraying, pump seal. Side and severity are what separate them." },
+    { "case_id": "C-49590", "outcome_status": "CONFIRMED", "cause_id": "CH.WATER.PUMP_SEAL_FAILED", "why": "Description is three words with no side and no severity. The right answer here is a low-confidence spread, not a confident pump seal." }
+  ]
+}
